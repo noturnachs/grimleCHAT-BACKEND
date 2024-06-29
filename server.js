@@ -118,7 +118,7 @@ function handleLeaveRoom(socket, username) {
   );
 }
 
-const PORT = process.env.PORT || 3001; // Use environment variable for the port
+const PORT = process.env.PORT; // Use environment variable for the port
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
