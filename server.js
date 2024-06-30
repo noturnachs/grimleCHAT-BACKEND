@@ -81,6 +81,10 @@ io.on("connection", (socket) => {
     userCount--; // Decrement user count on disconnection
     io.emit("userCountUpdate", Math.ceil(userCount / 2)); // Emit adjusted user count to all clients
   });
+
+  socket.on("typing", ({ room, username, typing }) => {
+    io.to(room).emit("typing", { username, typing });
+  });
 });
 
 function handleLeaveRoom(socket, username) {
