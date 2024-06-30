@@ -100,6 +100,7 @@ function handleLeaveRoom(socket, username) {
       if (remainingUserSocket) {
         remainingUserSocket.emit("userLeft", {
           message: `${username} has left the chat. You are back in the queue.`,
+          username: username, // Include the username in the event payload
         });
         console.log(
           `${username} left the chat. ${remainingUserSocket.username} is back in the queue.`
