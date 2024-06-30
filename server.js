@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ path: "../.env" });
 const express = require("express");
 const http = require("http");
 const socketIO = require("socket.io");
@@ -17,10 +17,14 @@ const io = socketIO(server, {
   reconnect: true,
 });
 
+console.log("CLIENT_ORIGIN:", process.env.CLIENT_ORIGIN);
 const waitingQueue = [];
+let userCount = 0; // Initialize user count
 
 io.on("connection", (socket) => {
   console.log("A user connected with socket ID:", socket.id);
+  userCount++; // Increment user count on connection
+  io.emit("userCountUpdate", Math.ceil(userCount / 2)); // Emit adjusted user count to all clients
 
   socket.on("startMatch", (username) => {
     console.log(
@@ -74,6 +78,8 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`User with socket ID ${socket.id} disconnected`);
     handleLeaveRoom(socket, socket.username);
+    userCount--; // Decrement user count on disconnection
+    io.emit("userCountUpdate", Math.ceil(userCount / 2)); // Emit adjusted user count to all clients
   });
 });
 
