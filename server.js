@@ -9,29 +9,41 @@ const server = http.createServer(app);
 
 const io = socketIO(server, {
   cors: {
-    origin: process.env.CLIENT_ORIGIN, // Use environment variable for the origin
+    origin: process.env.CLIENT_ORIGIN,
     methods: ["GET", "POST"],
   },
-  pingInterval: 25000, // 25 seconds
-  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000,
+  pingTimeout: 60000,
   reconnect: true,
 });
 
 console.log("CLIENT_ORIGIN:", process.env.CLIENT_ORIGIN);
 const waitingQueue = [];
-let userCount = 0; // Initialize user count
+let userCount = 0;
+
+app.use(cors());
+app.use(express.json());
+
+// Admin password validation endpoint
+app.post("/validate-admin", (req, res) => {
+  const { password } = req.body;
+  if (password === process.env.ADMIN_PASSWORD) {
+    res.json({ success: true });
+  } else {
+    res.json({ success: false });
+  }
+});
 
 io.on("connection", (socket) => {
   console.log("A user connected with socket ID:", socket.id);
-  userCount++; // Increment user count on connection
-  io.emit("userCountUpdate", Math.ceil(userCount / 2)); // Emit adjusted user count to all clients
+  userCount++;
+  io.emit("userCountUpdate", Math.ceil(userCount / 2));
 
   socket.on("startMatch", (username) => {
     console.log(
       `User ${username} with socket ID ${socket.id} is looking for a match`
     );
 
-    // Check if the user is already in the waiting queue
     if (waitingQueue.some((user) => user.socket.id === socket.id)) {
       console.log(`User ${username} is already in the waiting queue`);
       return;
@@ -43,6 +55,7 @@ io.on("connection", (socket) => {
       "Current waiting queue:",
       waitingQueue.map((user) => user.username)
     );
+
     if (waitingQueue.length >= 2) {
       const user1 = waitingQueue.shift();
       const user2 = waitingQueue.shift();
@@ -78,8 +91,8 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`User with socket ID ${socket.id} disconnected`);
     handleLeaveRoom(socket, socket.username);
-    userCount--; // Decrement user count on disconnection
-    io.emit("userCountUpdate", Math.ceil(userCount / 2)); // Emit adjusted user count to all clients
+    userCount--;
+    io.emit("userCountUpdate", Math.ceil(userCount / 2));
   });
 
   socket.on("typing", ({ room, username, typing }) => {
@@ -104,7 +117,7 @@ function handleLeaveRoom(socket, username) {
       if (remainingUserSocket) {
         remainingUserSocket.emit("userLeft", {
           message: `${username} has left the chat. You are back in the queue.`,
-          username: username, // Include the username in the event payload
+          username: username,
         });
         console.log(
           `${username} left the chat. ${remainingUserSocket.username} is back in the queue.`
@@ -113,7 +126,6 @@ function handleLeaveRoom(socket, username) {
     }
   }
 
-  // Remove from waiting queue
   for (let i = 0; i < waitingQueue.length; i++) {
     if (waitingQueue[i].socket.id === socket.id) {
       console.log(
@@ -129,7 +141,7 @@ function handleLeaveRoom(socket, username) {
   );
 }
 
-const PORT = process.env.PORT; // Use environment variable for the port
+const PORT = process.env.PORT;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
