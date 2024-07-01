@@ -37,7 +37,7 @@ app.post("/validate-admin", (req, res) => {
 io.on("connection", (socket) => {
   console.log("A user connected with socket ID:", socket.id);
   userCount++;
-  io.emit("userCountUpdate", Math.ceil(userCount / 2));
+  io.emit("userCountUpdate", userCount);
 
   socket.on("startMatch", (username) => {
     console.log(
@@ -92,7 +92,7 @@ io.on("connection", (socket) => {
     console.log(`User with socket ID ${socket.id} disconnected`);
     handleLeaveRoom(socket, socket.username);
     userCount--;
-    io.emit("userCountUpdate", Math.ceil(userCount / 2));
+    io.emit("userCountUpdate", userCount);
   });
 
   socket.on("typing", ({ room, username, typing }) => {
@@ -119,6 +119,7 @@ function handleLeaveRoom(socket, username) {
           message: `${username} has left the chat. You are back in the queue.`,
           username: username,
         });
+        remainingUserSocket.leave(room); // Ensure the remaining user leaves the room
         console.log(
           `${username} left the chat. ${remainingUserSocket.username} is back in the queue.`
         );
