@@ -33,7 +33,6 @@ app.post("/validate-admin", (req, res) => {
     res.json({ success: false });
   }
 });
-
 io.on("connection", (socket) => {
   console.log("A user connected with socket ID:", socket.id);
   userCount++;
@@ -117,9 +116,9 @@ function handleLeaveRoom(socket, username) {
       if (remainingUserSocket) {
         remainingUserSocket.emit("userLeft", {
           message: `${username} has left the chat. You are back in the queue.`,
-          username: username,
+          username: remainingUserSocket.username,
         });
-        remainingUserSocket.leave(room); // Ensure the remaining user leaves the room
+        remainingUserSocket.leave(room);
         console.log(
           `${username} left the chat. ${remainingUserSocket.username} is back in the queue.`
         );
