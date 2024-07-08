@@ -83,13 +83,17 @@ io.on("connection", (socket) => {
     io.to(room).emit("message", message);
   });
 
-  socket.on("leaveRoom", (username) => {
-    handleLeaveRoom(socket, username);
+  socket.on("leaveRoom", () => {
+    handleLeaveRoom(socket);
+  });
+
+  socket.on("leaveQueue", (username) => {
+    handleLeaveQueue(socket, username);
   });
 
   socket.on("disconnect", () => {
     console.log(`User with socket ID ${socket.id} disconnected`);
-    handleLeaveRoom(socket, socket.username);
+    handleLeaveRoom(socket);
     userCount--;
     io.emit("userCountUpdate", userCount);
   });
@@ -99,7 +103,8 @@ io.on("connection", (socket) => {
   });
 });
 
-function handleLeaveRoom(socket, username) {
+function handleLeaveRoom(socket) {
+  const username = socket.username; // Get the username from the socket object
   const rooms = Array.from(socket.rooms);
   const room = rooms.find((r) => r.startsWith("room-"));
   if (room) {
@@ -116,7 +121,7 @@ function handleLeaveRoom(socket, username) {
       if (remainingUserSocket) {
         remainingUserSocket.emit("userLeft", {
           message: `${username} has left the chat. You are back in the queue.`,
-          username: remainingUserSocket.username,
+          username: username, // Send the username of the user who left
         });
         remainingUserSocket.leave(room);
         console.log(
@@ -137,6 +142,22 @@ function handleLeaveRoom(socket, username) {
   }
   console.log(
     "Current waiting queue after disconnection:",
+    waitingQueue.map((user) => user.username)
+  );
+}
+
+function handleLeaveQueue(socket, username) {
+  for (let i = 0; i < waitingQueue.length; i++) {
+    if (waitingQueue[i].socket.id === socket.id) {
+      console.log(
+        `Removing user ${waitingQueue[i].username} from the waiting queue`
+      );
+      waitingQueue.splice(i, 1);
+      break;
+    }
+  }
+  console.log(
+    "Current waiting queue after leaving:",
     waitingQueue.map((user) => user.username)
   );
 }
