@@ -132,25 +132,13 @@ function matchUsers(socket) {
   if (matchIndex !== -1) {
     user1 = waitingQueue.find((user) => user.socket.id === socket.id);
     user2 = waitingQueue.splice(matchIndex, 1)[0];
-
-    const commonInterests = user1.interest.filter((user1Interest) =>
-      user2.interest.some((user2Interest) =>
-        areSimilar(user1Interest, user2Interest)
-      )
-    );
-
-    console.log(
-      `Matching ${user1.username} and ${
-        user2.username
-      } with common interest(s): ${commonInterests.join(", ")}`
-    );
   } else {
     // If no match is found based on interests, fallback to random matching
     if (waitingQueue.length >= 2) {
       user1 = waitingQueue.shift();
       user2 = waitingQueue.shift();
       console.log(
-        `Fallback random match between ${user1.username} and ${user2.username}`
+        `Fallback random match between ${user1?.username} and ${user2?.username}`
       );
     }
   }
@@ -192,6 +180,8 @@ function matchUsers(socket) {
     console.log(
       `Users ${user1.username} and ${user2.username} have joined room ${room}`
     );
+  } else {
+    console.log(`No match found for user ${socket.username}.`);
   }
 }
 
@@ -201,6 +191,7 @@ function handleLeaveRoom(socket) {
   const room = rooms.find((r) => r.startsWith("room-"));
   if (room) {
     socket.leave(room);
+    io.to(room).emit("typing", { username, typing: false }); // Stop typing indicator when user leaves
     io.to(room).emit("message", {
       username: "System",
       messageText: `${username} has left the chat.`,
