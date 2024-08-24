@@ -61,6 +61,11 @@ io.on("connection", (socket) => {
   io.emit("userCountUpdate", userCount);
 
   socket.on("startMatch", ({ username, interest }) => {
+    // Ensure interest is defined and an array
+    if (!Array.isArray(interest) || interest.length === 0) {
+      interest = ["No interest provided"]; // Set a default value or handle as you prefer
+    }
+
     console.log(
       `User ${username} with socket ID ${
         socket.id
