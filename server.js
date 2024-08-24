@@ -9,7 +9,8 @@ const server = http.createServer(app);
 
 const io = socketIO(server, {
   cors: {
-    origin: process.env.CLIENT_ORIGIN,
+    origin: process.env.CLIENT_ORIGIN, // for prod
+
     methods: ["GET", "POST"],
   },
   pingInterval: 25000,
@@ -33,14 +34,37 @@ app.post("/validate-admin", (req, res) => {
     res.json({ success: false });
   }
 });
+
+function areSimilar(word1, word2) {
+  const normalizedWord1 = word1.toLowerCase().trim();
+  const normalizedWord2 = word2.toLowerCase().trim();
+
+  // Check for exact match or one word being a substring of the other
+  if (
+    normalizedWord1.includes(normalizedWord2) ||
+    normalizedWord2.includes(normalizedWord1)
+  ) {
+    return true;
+  }
+
+  // Check for common prefix with a minimum length (e.g., 3 characters)
+  const minLength = 3;
+  return (
+    normalizedWord1.startsWith(normalizedWord2.slice(0, minLength)) ||
+    normalizedWord2.startsWith(normalizedWord1.slice(0, minLength))
+  );
+}
+
 io.on("connection", (socket) => {
   console.log("A user connected with socket ID:", socket.id);
   userCount++;
   io.emit("userCountUpdate", userCount);
 
-  socket.on("startMatch", (username) => {
+  socket.on("startMatch", ({ username, interest }) => {
     console.log(
-      `User ${username} with socket ID ${socket.id} is looking for a match`
+      `User ${username} with socket ID ${
+        socket.id
+      } and interests ${interest.join(", ")} is looking for a match`
     );
 
     if (waitingQueue.some((user) => user.socket.id === socket.id)) {
@@ -49,15 +73,48 @@ io.on("connection", (socket) => {
     }
 
     socket.username = username;
-    waitingQueue.push({ socket, username });
+    socket.interest = interest;
+    waitingQueue.push({ socket, username, interest });
     console.log(
       "Current waiting queue:",
-      waitingQueue.map((user) => user.username)
+      waitingQueue.map(
+        (user) => `${user.username} (${user.interest.join(", ")})`
+      )
     );
 
     if (waitingQueue.length >= 2) {
-      const user1 = waitingQueue.shift();
-      const user2 = waitingQueue.shift();
+      let user1, user2;
+
+      // Refined matching logic using the areSimilar function
+      const matchIndex = waitingQueue.findIndex(
+        (user) =>
+          user.socket.id !== socket.id &&
+          user.interest.some((userInterest) =>
+            interest.some((currentInterest) =>
+              areSimilar(userInterest, currentInterest)
+            )
+          )
+      );
+
+      if (matchIndex !== -1) {
+        user1 = waitingQueue.find((user) => user.socket.id === socket.id);
+        user2 = waitingQueue.splice(matchIndex, 1)[0];
+
+        const commonInterests = user1.interest.filter((user1Interest) =>
+          user2.interest.some((user2Interest) =>
+            areSimilar(user1Interest, user2Interest)
+          )
+        );
+        console.log(
+          `Matching ${user1.username} and ${
+            user2.username
+          } with common interest(s): ${commonInterests.join(", ")}`
+        );
+      } else {
+        user1 = waitingQueue.shift();
+        user2 = waitingQueue.shift();
+      }
+
       const room = `room-${user1.username}-${user2.username}`;
 
       console.log(
@@ -67,8 +124,29 @@ io.on("connection", (socket) => {
       user1.socket.join(room);
       user2.socket.join(room);
 
-      user1.socket.emit("matchFound", { room, username: user2.username });
-      user2.socket.emit("matchFound", { room, username: user1.username });
+      const matchingInterests = user1.interest.filter((user1Interest) =>
+        user2.interest.some((user2Interest) =>
+          areSimilar(user1Interest, user2Interest)
+        )
+      );
+
+      const interestMessage =
+        matchingInterests.length > 0
+          ? `Both of you like: ${matchingInterests
+              .map((interest) => `<strong>${interest}</strong>`)
+              .join(", ")}`
+          : null;
+
+      user1.socket.emit("matchFound", {
+        room,
+        username: user2.username,
+        interest: interestMessage,
+      });
+      user2.socket.emit("matchFound", {
+        room,
+        username: user1.username,
+        interest: interestMessage,
+      });
 
       console.log(
         `Users ${user1.username} and ${user2.username} have joined room ${room}`
