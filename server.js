@@ -161,10 +161,11 @@ io.on("connection", (socket) => {
       interest = ["No interest provided"];
     }
 
+    // Log the fingerprint (visitorId) along with username and interest
     console.log(
-      `User ${username} with socket ID ${
-        socket.id
-      } and interests ${interest.join(", ")} is looking for a match`
+      `User ${username} with fingerprint ${visitorId} has interests: ${interest.join(
+        ", "
+      )}`
     );
 
     if (waitingQueue.has(socket.id)) {
@@ -190,6 +191,11 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       matchUsers(socket);
     }, 5000); // Start matching after 5 seconds
+  });
+
+  // Listen for the fingerprint event
+  socket.on("fingerprintGenerated", (visitorId) => {
+    console.log("Fingerprint received from client:", visitorId);
   });
 
   socket.on("sendMessage", ({ room, message }) => {
