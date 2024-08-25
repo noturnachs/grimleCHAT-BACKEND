@@ -89,10 +89,20 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sendMessage", ({ room, message }) => {
-    console.log(
-      `Message from ${message.username} in room ${room}: ${message.messageText}`
-    );
-    io.to(room).emit("message", message);
+    if (message.audio) {
+      console.log(
+        `Received audio message from ${message.username} in room ${room}`
+      );
+      io.to(room).emit("message", {
+        username: message.username,
+        audio: message.audio, // Broadcast the base64 audio data to all clients in the room
+      });
+    } else {
+      console.log(
+        `Message from ${message.username} in room ${room}: ${message.messageText}`
+      );
+      io.to(room).emit("message", message);
+    }
   });
 
   socket.on("leaveRoom", () => {
