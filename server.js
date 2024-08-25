@@ -255,6 +255,51 @@ function handleLeaveQueue(socket, username) {
   );
 }
 
+let announcement = "Welcome to LeeyosChat!"; // Default announcement
+
+app.get("/announcement", (req, res) => {
+  res.json({ announcement });
+});
+
+app.post("/update-announcement", (req, res) => {
+  const { newAnnouncement } = req.body;
+  if (newAnnouncement && typeof newAnnouncement === "string") {
+    announcement = newAnnouncement;
+    io.emit("announcementUpdate", announcement); // Notify connected clients
+    res.json({ success: true, announcement });
+  } else {
+    res.status(400).json({ success: false, message: "Invalid announcement" });
+  }
+});
+
+const TelegramBot = require("node-telegram-bot-api");
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+
+bot.onText(/\/announce (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const newAnnouncement = match[1]; // the announcement message
+
+  // Update the announcement via your API
+  fetch(`${process.env.SERVER_ORIGIN}/update-announcement`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ newAnnouncement }),
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.success) {
+        bot.sendMessage(chatId, `Announcement updated: ${newAnnouncement}`);
+      } else {
+        bot.sendMessage(chatId, `Failed to update announcement.`);
+      }
+    })
+    .catch((error) => {
+      bot.sendMessage(chatId, `Error: ${error.message}`);
+    });
+});
+
 const PORT = process.env.PORT;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
