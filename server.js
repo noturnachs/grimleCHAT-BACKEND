@@ -19,7 +19,7 @@ const io = socketIO(server, {
 });
 
 console.log("CLIENT_ORIGIN:", process.env.CLIENT_ORIGIN);
-const waitingQueue = [];
+const waitingQueue = new Map(); // Use a Map to manage the queue
 let userCount = 0;
 
 app.use(cors());
@@ -167,17 +167,22 @@ io.on("connection", (socket) => {
       } and interests ${interest.join(", ")} is looking for a match`
     );
 
-    if (waitingQueue.some((user) => user.socket.id === socket.id)) {
+    if (waitingQueue.has(socket.id)) {
       console.log(`User ${username} is already in the waiting queue`);
       return;
     }
 
     socket.username = username;
     socket.interest = interest;
-    waitingQueue.push({ socket, username, interest, joinedAt: Date.now() });
+    waitingQueue.set(socket.id, {
+      socket,
+      username,
+      interest,
+      joinedAt: Date.now(),
+    });
     console.log(
       "Current waiting queue:",
-      waitingQueue.map(
+      Array.from(waitingQueue.values()).map(
         (user) => `${user.username} (${user.interest.join(", ")})`
       )
     );
@@ -237,7 +242,7 @@ function matchUsers(socket) {
   let user1, user2;
 
   // First, try to match based on interests
-  const matchIndex = waitingQueue.findIndex(
+  const matchIndex = Array.from(waitingQueue.values()).findIndex(
     (user) =>
       user.socket.id !== socket.id &&
       !Array.from(user.socket.rooms).some((r) => r.startsWith("room-")) && // Ensure the other user is not already in a room
@@ -249,19 +254,21 @@ function matchUsers(socket) {
   );
 
   if (matchIndex !== -1) {
-    user1 = waitingQueue.find((user) => user.socket.id === socket.id);
-    user2 = waitingQueue.splice(matchIndex, 1)[0];
+    user1 = waitingQueue.get(socket.id);
+    user2 = Array.from(waitingQueue.values())[matchIndex];
+    waitingQueue.delete(user2.socket.id);
   } else {
     // If no match is found based on interests, fallback to random matching
-    const randomMatchIndex = waitingQueue.findIndex(
+    const randomMatchIndex = Array.from(waitingQueue.values()).findIndex(
       (user) =>
         user.socket.id !== socket.id &&
         !Array.from(user.socket.rooms).some((r) => r.startsWith("room-"))
     );
 
     if (randomMatchIndex !== -1) {
-      user1 = waitingQueue.find((user) => user.socket.id === socket.id);
-      user2 = waitingQueue.splice(randomMatchIndex, 1)[0];
+      user1 = waitingQueue.get(socket.id);
+      user2 = Array.from(waitingQueue.values())[randomMatchIndex];
+      waitingQueue.delete(user2.socket.id);
       console.log(
         `Fallback random match between ${user1?.username} and ${user2?.username}`
       );
@@ -275,8 +282,8 @@ function matchUsers(socket) {
       `Matching ${user1.username} and ${user2.username} in room ${room}`
     );
 
-    // Remove both users from the waiting queue
-    waitingQueue.splice(waitingQueue.indexOf(user1), 1);
+    // Remove user1 from the waiting queue
+    waitingQueue.delete(user1.socket.id);
     console.log(`${user1.username} removed from the waiting queue`);
     console.log(`${user2.username} removed from the waiting queue`);
 
@@ -348,34 +355,17 @@ function handleLeaveRoom(socket) {
     }
   }
 
-  for (let i = 0; i < waitingQueue.length; i++) {
-    if (waitingQueue[i].socket.id === socket.id) {
-      console.log(
-        `Removing user ${waitingQueue[i].username} from the waiting queue`
-      );
-      waitingQueue.splice(i, 1);
-      break;
-    }
-  }
-  console.log(
-    "Current waiting queue after disconnection:",
-    waitingQueue.map((user) => user.username)
-  );
+  handleLeaveQueue(socket, username); // Remove user from queue when they leave the room
 }
 
 function handleLeaveQueue(socket, username) {
-  for (let i = 0; i < waitingQueue.length; i++) {
-    if (waitingQueue[i].socket.id === socket.id) {
-      console.log(
-        `Removing user ${waitingQueue[i].username} from the waiting queue`
-      );
-      waitingQueue.splice(i, 1);
-      break;
-    }
+  if (waitingQueue.has(socket.id)) {
+    console.log(`Removing user ${username} from the waiting queue`);
+    waitingQueue.delete(socket.id);
   }
   console.log(
     "Current waiting queue after leaving:",
-    waitingQueue.map((user) => user.username)
+    Array.from(waitingQueue.values()).map((user) => user.username)
   );
 }
 
@@ -561,11 +551,9 @@ app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
 
   // If the screenshot was rejected by the file filter, multer won't attach the file to req.file
   if (!screenshot) {
-    return res
-      .status(400)
-      .json({
-        message: "Invalid file type. Only PNG, JPG, and JPEG are allowed.",
-      });
+    return res.status(400).json({
+      message: "Invalid file type. Only PNG, JPG, and JPEG are allowed.",
+    });
   }
 
   // Log the report information
