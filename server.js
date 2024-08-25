@@ -126,12 +126,22 @@ io.on("connection", (socket) => {
 });
 
 function matchUsers(socket) {
+  // Check if the user is already in a room
+  const rooms = Array.from(socket.rooms);
+  const currentRoom = rooms.find((r) => r.startsWith("room-"));
+
+  if (currentRoom) {
+    console.log(`User ${socket.username} is already in a room: ${currentRoom}`);
+    return; // Exit if the user is already in a room
+  }
+
   let user1, user2;
 
   // First, try to match based on interests
   const matchIndex = waitingQueue.findIndex(
     (user) =>
       user.socket.id !== socket.id &&
+      !Array.from(user.socket.rooms).some((r) => r.startsWith("room-")) && // Ensure the other user is not already in a room
       user.interest.some((userInterest) =>
         socket.interest.some((currentInterest) =>
           areSimilar(userInterest, currentInterest)
@@ -144,9 +154,15 @@ function matchUsers(socket) {
     user2 = waitingQueue.splice(matchIndex, 1)[0];
   } else {
     // If no match is found based on interests, fallback to random matching
-    if (waitingQueue.length >= 2) {
-      user1 = waitingQueue.shift();
-      user2 = waitingQueue.shift();
+    const randomMatchIndex = waitingQueue.findIndex(
+      (user) =>
+        user.socket.id !== socket.id &&
+        !Array.from(user.socket.rooms).some((r) => r.startsWith("room-"))
+    );
+
+    if (randomMatchIndex !== -1) {
+      user1 = waitingQueue.find((user) => user.socket.id === socket.id);
+      user2 = waitingQueue.splice(randomMatchIndex, 1)[0];
       console.log(
         `Fallback random match between ${user1?.username} and ${user2?.username}`
       );
