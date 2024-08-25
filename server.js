@@ -137,7 +137,11 @@ function areSimilar(word1, word2) {
 }
 
 io.on("connection", (socket) => {
-  console.log("A user connected with socket ID:", socket.id);
+  console.log(
+    "A user connected with socket ID:",
+    socket.id,
+    `(Visitor ID: ${socket.visitorId || "unknown"})`
+  );
   userCount++;
   io.emit("userCountUpdate", userCount);
 
@@ -163,13 +167,15 @@ io.on("connection", (socket) => {
 
     // Log the fingerprint (visitorId) along with username and interest
     console.log(
-      `User ${username} with fingerprint ${visitorId} has interests: ${interest.join(
+      `User ${username} (Visitor ID: ${visitorId}) with interests: ${interest.join(
         ", "
       )}`
     );
 
     if (waitingQueue.has(socket.id)) {
-      console.log(`User ${username} is already in the waiting queue`);
+      console.log(
+        `User ${username} (Visitor ID: ${visitorId}) is already in the waiting queue`
+      );
       return;
     }
 
@@ -184,7 +190,10 @@ io.on("connection", (socket) => {
     console.log(
       "Current waiting queue:",
       Array.from(waitingQueue.values()).map(
-        (user) => `${user.username} (${user.interest.join(", ")})`
+        (user) =>
+          `${user.username} (Visitor ID: ${
+            user.socket.visitorId
+          }) (${user.interest.join(", ")})`
       )
     );
 
@@ -199,9 +208,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sendMessage", ({ room, message }) => {
+    const visitorId = socket.visitorId; // Retrieve the visitorId from the socket object
+
     if (message.audio) {
       console.log(
-        `Received audio message from ${message.username} in room ${room}`
+        `Received audio message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}`
       );
       io.to(room).emit("message", {
         username: message.username,
@@ -209,7 +220,7 @@ io.on("connection", (socket) => {
       });
     } else {
       console.log(
-        `Message from ${message.username} in room ${room}: ${message.messageText}`
+        `Message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}: ${message.messageText}`
       );
       io.to(room).emit("message", message);
     }
@@ -224,7 +235,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log(`User with socket ID ${socket.id} disconnected`);
+    console.log(
+      `User with socket ID ${socket.id} (Visitor ID: ${socket.visitorId}) disconnected`
+    );
     handleLeaveRoom(socket);
     userCount--;
     io.emit("userCountUpdate", userCount);
@@ -241,7 +254,9 @@ function matchUsers(socket) {
   const currentRoom = rooms.find((r) => r.startsWith("room-"));
 
   if (currentRoom) {
-    console.log(`User ${socket.username} is already in a room: ${currentRoom}`);
+    console.log(
+      `User ${socket.username} (Visitor ID: ${socket.visitorId}) is already in a room: ${currentRoom}`
+    );
     return; // Exit if the user is already in a room
   }
 
@@ -276,7 +291,7 @@ function matchUsers(socket) {
       user2 = Array.from(waitingQueue.values())[randomMatchIndex];
       waitingQueue.delete(user2.socket.id);
       console.log(
-        `Fallback random match between ${user1?.username} and ${user2?.username}`
+        `Fallback random match between ${user1?.username} (Visitor ID: ${user1?.socket.visitorId}) and ${user2?.username} (Visitor ID: ${user2?.socket.visitorId})`
       );
     }
   }
@@ -285,13 +300,17 @@ function matchUsers(socket) {
     const room = `room-${user1.username}-${user2.username}`;
 
     console.log(
-      `Matching ${user1.username} and ${user2.username} in room ${room}`
+      `Matching ${user1.username} (Visitor ID: ${user1.socket.visitorId}) and ${user2.username} (Visitor ID: ${user2.socket.visitorId}) in room ${room}`
     );
 
     // Remove user1 from the waiting queue
     waitingQueue.delete(user1.socket.id);
-    console.log(`${user1.username} removed from the waiting queue`);
-    console.log(`${user2.username} removed from the waiting queue`);
+    console.log(
+      `${user1.username} (Visitor ID: ${user1.socket.visitorId}) removed from the waiting queue`
+    );
+    console.log(
+      `${user2.username} (Visitor ID: ${user2.socket.visitorId}) removed from the waiting queue`
+    );
 
     user1.socket.join(room);
     user2.socket.join(room);
@@ -325,15 +344,18 @@ function matchUsers(socket) {
     });
 
     console.log(
-      `Users ${user1.username} and ${user2.username} have joined room ${room}`
+      `Users ${user1.username} (Visitor ID: ${user1.socket.visitorId}) and ${user2.username} (Visitor ID: ${user2.socket.visitorId}) have joined room ${room}`
     );
   } else {
-    console.log(`No match found for user ${socket.username}.`);
+    console.log(
+      `No match found for user ${socket.username} (Visitor ID: ${socket.visitorId}).`
+    );
   }
 }
 
 function handleLeaveRoom(socket) {
   const username = socket.username;
+  const visitorId = socket.visitorId;
   const rooms = Array.from(socket.rooms);
   const room = rooms.find((r) => r.startsWith("room-"));
   if (room) {
@@ -341,7 +363,7 @@ function handleLeaveRoom(socket) {
     io.to(room).emit("typing", { username, typing: false }); // Stop typing indicator when user leaves
     io.to(room).emit("message", {
       username: "System",
-      messageText: `${username} has left the chat.`,
+      messageText: `${username} (Visitor ID: ${visitorId}) has left the chat.`,
     });
 
     const remainingUsers = Array.from(io.sockets.adapter.rooms.get(room) || []);
@@ -350,12 +372,12 @@ function handleLeaveRoom(socket) {
       const remainingUserSocket = io.sockets.sockets.get(remainingUserSocketId);
       if (remainingUserSocket) {
         remainingUserSocket.emit("userLeft", {
-          message: `${username} has left the chat. You are back in the queue.`,
+          message: `${username} (Visitor ID: ${visitorId}) has left the chat. You are back in the queue.`,
           username: username,
         });
         remainingUserSocket.leave(room);
         console.log(
-          `${username} left the chat. ${remainingUserSocket.username} is back in the queue.`
+          `${username} (Visitor ID: ${visitorId}) left the chat. ${remainingUserSocket.username} (Visitor ID: ${remainingUserSocket.visitorId}) is back in the queue.`
         );
       }
     }
@@ -366,12 +388,16 @@ function handleLeaveRoom(socket) {
 
 function handleLeaveQueue(socket, username) {
   if (waitingQueue.has(socket.id)) {
-    console.log(`Removing user ${username} from the waiting queue`);
+    console.log(
+      `Removing user ${username} (Visitor ID: ${socket.visitorId}) from the waiting queue`
+    );
     waitingQueue.delete(socket.id);
   }
   console.log(
     "Current waiting queue after leaving:",
-    Array.from(waitingQueue.values()).map((user) => user.username)
+    Array.from(waitingQueue.values()).map(
+      (user) => `${user.username} (Visitor ID: ${user.socket.visitorId})`
+    )
   );
 }
 
@@ -461,7 +487,6 @@ bot.onText(/\/ban (\S+)(?:\s+(.+))?/, async (msg, match) => {
 });
 
 // New unban command
-// Removed the check using the `bannedUsers` Set and adjusted the file update process
 bot.onText(/\/unban (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
   const visitorId = match[1].trim(); // the visitor ID to unban
@@ -490,7 +515,6 @@ bot.onText(/\/unban (.+)/, (msg, match) => {
 });
 
 // Command to show the list of banned users
-// Changed the split logic to correctly parse the line and display the ban list
 bot.onText(/\/banlist/, (msg) => {
   const chatId = msg.chat.id;
 
@@ -545,7 +569,6 @@ const fileFilter = (req, file, cb) => {
 // Initialize multer with the file filter
 const upload = multer({ fileFilter });
 
-// Endpoint to handle user reports
 // Endpoint to handle user reports
 app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
   const { visitorId, reason } = req.body;
