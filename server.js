@@ -176,6 +176,11 @@ function matchUsers(socket) {
       `Matching ${user1.username} and ${user2.username} in room ${room}`
     );
 
+    // Remove both users from the waiting queue
+    waitingQueue.splice(waitingQueue.indexOf(user1), 1);
+    console.log(`${user1.username} removed from the waiting queue`);
+    console.log(`${user2.username} removed from the waiting queue`);
+
     user1.socket.join(room);
     user2.socket.join(room);
 
