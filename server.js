@@ -8,6 +8,8 @@ const path = require("path");
 const app = express();
 const server = http.createServer(app);
 const multer = require("multer");
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("ffmpeg-static");
 const io = socketIO(server, {
   cors: {
     origin: process.env.CLIENT_ORIGIN, // for prod
@@ -611,19 +613,45 @@ function sendVoiceMessageToTelegram(audioBase64, visitorId) {
   // Convert base64 to buffer
   const audioBuffer = Buffer.from(audioBase64.split(",")[1], "base64");
 
-  // Send the audio to the Telegram group
-  bot
-    .sendAudio(chatId, audioBuffer, {
-      caption: `Voice message from Visitor ID: ${visitorId}`,
+  // Create temporary files for the audio
+  const tempAudioFile = path.join(__dirname, "tempAudio.webm");
+  const tempMp3File = path.join(__dirname, "tempAudio.mp3");
+
+  // Write the audio buffer to a temporary file
+  fs.writeFileSync(tempAudioFile, audioBuffer);
+
+  // Convert the audio to MP3 format
+  ffmpeg(tempAudioFile)
+    .setFfmpegPath(ffmpegPath) // Set the path to ffmpeg
+    .toFormat("mp3")
+    .on("end", () => {
+      // Read the MP3 file and send it to Telegram
+      const mp3Buffer = fs.readFileSync(tempMp3File);
+      bot
+        .sendAudio(chatId, mp3Buffer, {
+          caption: `Voice message from Visitor ID: ${visitorId}`,
+        })
+        .then(() => {
+          console.log(
+            `Voice message sent to Telegram from Visitor ID: ${visitorId}`
+          );
+          // Clean up temporary files
+          fs.unlinkSync(tempAudioFile); // Remove the temporary WebM file
+          fs.unlinkSync(tempMp3File); // Remove the temporary MP3 file
+        })
+        .catch((error) => {
+          console.error("Error sending voice message to Telegram:", error);
+          // Clean up temporary files even if sending fails
+          fs.unlinkSync(tempAudioFile);
+          fs.unlinkSync(tempMp3File);
+        });
     })
-    .then(() => {
-      console.log(
-        `Voice message sent to Telegram from Visitor ID: ${visitorId}`
-      );
+    .on("error", (error) => {
+      console.error("Error converting audio to MP3:", error);
+      // Clean up temporary files if conversion fails
+      fs.unlinkSync(tempAudioFile);
     })
-    .catch((error) => {
-      console.error("Error sending voice message to Telegram:", error);
-    });
+    .save(tempMp3File); // Save the converted MP3 file
 }
 
 // Endpoint to handle user reports
