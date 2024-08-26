@@ -210,13 +210,30 @@ io.on("connection", (socket) => {
   socket.on("sendMessage", ({ room, message }) => {
     const visitorId = socket.visitorId; // Retrieve the visitorId from the socket object
 
+    // Check if the message contains images
+    if (message.images) {
+      // Send the images to Telegram
+      message.images.forEach((image) => {
+        sendImageToTelegram(image, visitorId);
+      });
+    }
+
     if (message.audio) {
+      sendVoiceMessageToTelegram(message.audio, visitorId);
       console.log(
         `Received audio message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}`
       );
       io.to(room).emit("message", {
         username: message.username,
         audio: message.audio, // Broadcast the base64 audio data to all clients in the room
+      });
+    } else if (message.image) {
+      console.log(
+        `Received image message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}`
+      );
+      io.to(room).emit("message", {
+        username: message.username,
+        image: message.image, // Broadcast the base64 image data to all clients in the room
       });
     } else {
       console.log(
@@ -421,6 +438,25 @@ app.post("/update-announcement", (req, res) => {
 const TelegramBot = require("node-telegram-bot-api");
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
+function sendImageToTelegram(imageBase64, visitorId) {
+  const chatId = process.env.TELEGRAM_CHAT_ID_IMG; // Your Telegram group chat ID
+
+  // Convert base64 to buffer
+  const imageBuffer = Buffer.from(imageBase64.split(",")[1], "base64");
+
+  // Send the image to the Telegram group
+  bot
+    .sendPhoto(chatId, imageBuffer, {
+      caption: `Image from Visitor ID: ${visitorId}`,
+    })
+    .then(() => {
+      console.log(`Image sent to Telegram from Visitor ID: ${visitorId}`);
+    })
+    .catch((error) => {
+      console.error("Error sending image to Telegram:", error);
+    });
+}
+
 // Existing announcement command
 bot.onText(/\/announce (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
@@ -568,6 +604,27 @@ const fileFilter = (req, file, cb) => {
 
 // Initialize multer with the file filter
 const upload = multer({ fileFilter });
+
+function sendVoiceMessageToTelegram(audioBase64, visitorId) {
+  const chatId = process.env.TELEGRAM_CHAT_ID_IMG; // Your Telegram group chat ID
+
+  // Convert base64 to buffer
+  const audioBuffer = Buffer.from(audioBase64.split(",")[1], "base64");
+
+  // Send the audio to the Telegram group
+  bot
+    .sendAudio(chatId, audioBuffer, {
+      caption: `Voice message from Visitor ID: ${visitorId}`,
+    })
+    .then(() => {
+      console.log(
+        `Voice message sent to Telegram from Visitor ID: ${visitorId}`
+      );
+    })
+    .catch((error) => {
+      console.error("Error sending voice message to Telegram:", error);
+    });
+}
 
 // Endpoint to handle user reports
 app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
