@@ -654,6 +654,58 @@ function sendVoiceMessageToTelegram(audioBase64, visitorId) {
     .save(tempMp3File); // Save the converted MP3 file
 }
 
+// Endpoint to handle bug reports
+app.post("/api/reportbugs", upload.single("screenshot"), (req, res) => {
+  const { email, issueDescription, selectedProblem } = req.body;
+  const screenshot = req.file; // This will contain the uploaded file
+
+  // Validate the incoming data
+  if (!email || !issueDescription || !selectedProblem) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
+
+  // Log the bug report information
+  console.log(
+    `Received bug report: Email: ${email}, Issue: ${issueDescription}, Problem: ${selectedProblem}`
+  );
+
+  // Prepare the message for Telegram
+  const message = `New Bug Report:\nEmail: ${email}\nIssue Description: ${issueDescription}\nProblem: ${selectedProblem}`;
+
+  // Send the report message to the Telegram bot
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+
+  // If a screenshot is provided, send it along with the message
+  if (screenshot) {
+    const imageBuffer = screenshot.buffer; // Get the image buffer
+
+    // Send the message and the image to Telegram
+    bot
+      .sendPhoto(chatId, imageBuffer, { caption: message })
+      .then(() => {
+        res.status(200).json({ message: "Bug report received successfully." });
+      })
+      .catch((err) => {
+        console.error("Error sending bug report to Telegram:", err);
+        res
+          .status(500)
+          .json({ message: "Failed to send bug report to Telegram." });
+      });
+  } else {
+    // If no screenshot, just send the message
+    bot
+      .sendMessage(chatId, message)
+      .then(() => {
+        res.status(200).json({ message: "Bug report received successfully." });
+      })
+      .catch((err) => {
+        console.error("Error sending bug report to Telegram:", err);
+        res
+          .status(500)
+          .json({ message: "Failed to send bug report to Telegram." });
+      });
+  }
+});
 // Endpoint to handle user reports
 app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
   const { visitorId, reason } = req.body;
