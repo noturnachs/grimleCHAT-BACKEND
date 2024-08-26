@@ -757,6 +757,17 @@ app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
     });
 });
 
+bot.onText(/\/say (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const textToSay = match[1]; // The text to send to clients
+
+  // Emit the message to all connected clients
+  io.emit("telegramMessage", { message: textToSay });
+
+  // Send a confirmation message back to the Telegram chat
+  bot.sendMessage(chatId, `Message sent to all users: "${textToSay}"`);
+});
+
 const PORT = process.env.PORT;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
