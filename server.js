@@ -20,16 +20,24 @@ const io = socketIO(server, {
   reconnect: true,
 });
 
-const diskPath = "uploadsFolder";
+// Set the disk path to the mounted uploads folder
+const diskPath = "/mnt/uploadsFolder"; // This is the mount path you set on Render
 
+// Ensure the uploads folder exists
+if (!fs.existsSync(diskPath)) {
+  fs.mkdirSync(diskPath); // Create the uploads folder if it doesn't exist
+}
+
+// Set the path for the banned users file
 const banFilePath = path.join(diskPath, "bannedUsers.txt");
 if (!fs.existsSync(banFilePath)) {
   fs.writeFileSync(banFilePath, ""); // Create an empty file if it doesn't exist
 }
 
-// Ensure the uploads folder exists
-if (!fs.existsSync(diskPath)) {
-  fs.mkdirSync(diskPath); // Create the uploads folder if it doesn't exist
+// Set the path for the stickers file
+const stickersFilePath = path.join(diskPath, "stickers.txt");
+if (!fs.existsSync(stickersFilePath)) {
+  fs.writeFileSync(stickersFilePath, ""); // Create an empty file if it doesn't exist
 }
 
 console.log("CLIENT_ORIGIN:", process.env.CLIENT_ORIGIN);
@@ -43,7 +51,6 @@ app.use(express.json());
 app.post("/api/identify-user", (req, res) => {
   const { visitorId } = req.body;
 
-  const banFilePath = path.join(diskPath, "bannedUsers.txt");
   const banList = fs.existsSync(banFilePath)
     ? fs.readFileSync(banFilePath, "utf-8")
     : "";
@@ -58,10 +65,7 @@ app.post("/api/identify-user", (req, res) => {
   res.status(200).json({ message: "Welcome!" });
 });
 
-// Ensure the file exists before appending
-
 // Endpoint to ban a user using a query parameter and a reason
-// Update the rest of your code to use the new paths
 app.post("/api/ban-user", (req, res) => {
   const visitorId = req.query.id; // Get visitorId from the query string
   const reason = req.body.reason || "No reason provided"; // Get the reason from the request body
@@ -95,7 +99,6 @@ app.post("/api/unban-user", (req, res) => {
     return res.status(400).json({ message: "Visitor ID is required." });
   }
 
-  // Use the correct path here
   const banList = fs.existsSync(banFilePath)
     ? fs.readFileSync(banFilePath, "utf-8")
     : "";
@@ -120,6 +123,7 @@ app.post("/api/unban-user", (req, res) => {
     });
   }
 });
+
 // Admin password validation endpoint
 app.post("/validate-admin", (req, res) => {
   const { password } = req.body;
@@ -165,8 +169,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("startMatch", ({ username, interest, visitorId }) => {
-    const banFilePath = path.join(diskPath, "bannedUsers.txt");
-
     const banList = fs.existsSync(banFilePath)
       ? fs.readFileSync(banFilePath, "utf-8")
       : "";
@@ -557,12 +559,11 @@ bot.onText(/\/unban (.+)/, (msg, match) => {
   }
 
   // Use the correct path for the banned users file
-  const filePath = path.join(__dirname, "uploadsFolder", "bannedUsers.txt"); // Update this line
-  const banEntries = fs.readFileSync(filePath, "utf-8").split("\n");
+  const banEntries = fs.readFileSync(banFilePath, "utf-8").split("\n");
   const updatedEntries = banEntries.filter(
     (entry) => !entry.includes(`ID: ${visitorId}`)
   );
-  fs.writeFileSync(filePath, updatedEntries.join("\n"));
+  fs.writeFileSync(banFilePath, updatedEntries.join("\n"));
 
   bot.sendMessage(
     chatId,
@@ -577,33 +578,27 @@ bot.onText(/\/banlist/, (msg) => {
 
   try {
     // Read the banned users file
-    const banFilePath = path.join(diskPath, "bannedUsers.txt");
+    const banList = fs.readFileSync(banFilePath, "utf-8");
 
-    if (fs.existsSync(banFilePath)) {
-      const banList = fs.readFileSync(banFilePath, "utf-8");
-
-      if (banList.trim().length === 0) {
-        bot.sendMessage(chatId, "The ban list is currently empty.");
-      } else {
-        const formattedBanList = banList
-          .split("\n")
-          .filter((line) => line.trim() !== "")
-          .map((line, index) => {
-            // Split the line using the "-" and "," delimiters
-            const [datePart, idPart] = line.split(" - ID: ");
-            const [id, reasonPart] = idPart.split(", Reason: ");
-
-            const date = new Date(datePart).toISOString().split("T")[0];
-            const reason = reasonPart || "No reason provided";
-
-            return `${index + 1}. ${date} ${id} ${reason}`;
-          })
-          .join("\n");
-
-        bot.sendMessage(chatId, `Ban List:\n${formattedBanList}`);
-      }
+    if (banList.trim().length === 0) {
+      bot.sendMessage(chatId, "The ban list is currently empty.");
     } else {
-      bot.sendMessage(chatId, "The ban list file does not exist.");
+      const formattedBanList = banList
+        .split("\n")
+        .filter((line) => line.trim() !== "")
+        .map((line, index) => {
+          // Split the line using the "-" and "," delimiters
+          const [datePart, idPart] = line.split(" - ID: ");
+          const [id, reasonPart] = idPart.split(", Reason: ");
+
+          const date = new Date(datePart).toISOString().split("T")[0];
+          const reason = reasonPart || "No reason provided";
+
+          return `${index + 1}. ${date} ${id} ${reason}`;
+        })
+        .join("\n");
+
+      bot.sendMessage(chatId, `Ban List:\n${formattedBanList}`);
     }
   } catch (error) {
     console.error("Error reading the ban list file:", error);
@@ -725,6 +720,7 @@ app.post("/api/reportbugs", upload.single("screenshot"), (req, res) => {
       });
   }
 });
+
 // Endpoint to handle user reports
 app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
   const { visitorId, reason } = req.body;
@@ -786,7 +782,6 @@ bot.onText(/\/say (.+)/, (msg, match) => {
   // Send a confirmation message back to the Telegram chat
   bot.sendMessage(chatId, `Message sent to all users: "${textToSay}"`);
 });
-const stickersFilePath = path.join(diskPath, "stickers.txt");
 
 // Function to load stickers from the text file
 const loadStickers = () => {
@@ -883,7 +878,7 @@ bot.onText(/\/addstix (.+)/, (msg, match) => {
   }
 });
 
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000; // Default to 3000 if PORT is not set
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
