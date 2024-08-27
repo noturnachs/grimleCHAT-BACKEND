@@ -220,7 +220,16 @@ io.on("connection", (socket) => {
       });
     }
 
-    if (message.audio) {
+    // Check if the message contains a GIF
+    if (message.gif) {
+      console.log(
+        `Received GIF message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}`
+      );
+      io.to(room).emit("message", {
+        username: message.username,
+        gif: message.gif, // Broadcast the GIF URL to all clients in the room
+      });
+    } else if (message.audio) {
       sendVoiceMessageToTelegram(message.audio, visitorId);
       console.log(
         `Received audio message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}`
@@ -228,14 +237,6 @@ io.on("connection", (socket) => {
       io.to(room).emit("message", {
         username: message.username,
         audio: message.audio, // Broadcast the base64 audio data to all clients in the room
-      });
-    } else if (message.image) {
-      console.log(
-        `Received image message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}`
-      );
-      io.to(room).emit("message", {
-        username: message.username,
-        image: message.image, // Broadcast the base64 image data to all clients in the room
       });
     } else {
       console.log(
