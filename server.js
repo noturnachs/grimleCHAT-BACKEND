@@ -768,10 +768,29 @@ bot.onText(/\/say (.+)/, (msg, match) => {
   // Send a confirmation message back to the Telegram chat
   bot.sendMessage(chatId, `Message sent to all users: "${textToSay}"`);
 });
+const stickersFilePath = path.join(__dirname, "stickers.txt");
 
-const stickers = [
-  "https://media.tenor.com/wrMDu29fA-YAAAAi/hasher-happy-sticker.gif",
-]; // Store sticker URLs
+// Function to load stickers from the text file
+const loadStickers = () => {
+  if (fs.existsSync(stickersFilePath)) {
+    const data = fs.readFileSync(stickersFilePath, "utf-8");
+    return data.split("\n").filter((url) => url.trim() !== ""); // Filter out empty lines
+  }
+  return [];
+};
+
+// Load stickers when the server starts
+let stickers = loadStickers();
+
+// Ensure the stickers.txt file exists
+const ensureStickersFileExists = () => {
+  if (!fs.existsSync(stickersFilePath)) {
+    fs.writeFileSync(stickersFilePath, ""); // Create an empty file if it doesn't exist
+  }
+};
+
+// Call the function to ensure the file exists
+ensureStickersFileExists();
 
 app.post("/add-sticker", (req, res) => {
   console.log("Received request with URL:", req.body.stickerUrl); // Log the received URL
@@ -783,6 +802,9 @@ app.post("/add-sticker", (req, res) => {
     io.emit("new-sticker", stickerUrl);
     console.log("New sticker broadcasted:", stickerUrl);
 
+    // Append the new sticker URL to the text file
+    fs.appendFileSync(stickersFilePath, `${stickerUrl}\n`);
+
     res
       .status(200)
       .send({ success: true, message: "Sticker added successfully" });
@@ -790,6 +812,26 @@ app.post("/add-sticker", (req, res) => {
     res
       .status(400)
       .send({ success: false, message: "Invalid or duplicate sticker URL" });
+  }
+});
+
+// Endpoint to get the list of stickers
+app.get("/api/stickers", (req, res) => {
+  try {
+    if (fs.existsSync(stickersFilePath)) {
+      const data = fs.readFileSync(stickersFilePath, "utf-8");
+      const stickers = data.split("\n").filter((url) => url.trim() !== ""); // Filter out empty lines
+      res.status(200).json({ success: true, stickers });
+    } else {
+      res
+        .status(404)
+        .json({ success: false, message: "Stickers file not found." });
+    }
+  } catch (error) {
+    console.error("Error reading stickers file:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Error reading stickers." });
   }
 });
 
