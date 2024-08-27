@@ -147,6 +147,13 @@ io.on("connection", (socket) => {
   userCount++;
   io.emit("userCountUpdate", userCount);
 
+  // Listen for the triggerEffect event
+  socket.on("triggerEffect", ({ effect, room }) => {
+    console.log(`Effect triggered: ${effect} in room: ${room}`);
+    // Emit the confettiTriggered event to all clients in the specified room
+    io.to(room).emit("confettiTriggered");
+  });
+
   socket.on("startMatch", ({ username, interest, visitorId }) => {
     const banFilePath = path.join(__dirname, "bannedUsers.txt");
     const banList = fs.existsSync(banFilePath)
