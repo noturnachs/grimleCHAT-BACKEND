@@ -20,7 +20,8 @@ const io = socketIO(server, {
   reconnect: true,
 });
 
-const diskPath = path.join(__dirname, "uploadsFolder"); // Ensure this points to your uploads folder
+const diskPath =
+  process.env.UPLOADS_FOLDER || path.join(__dirname, "uploadsFolder"); // Use environment variable or fallback to local path
 
 const banFilePath = path.join(diskPath, "bannedUsers.txt");
 if (!fs.existsSync(banFilePath)) {
