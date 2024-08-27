@@ -20,7 +20,7 @@ const io = socketIO(server, {
   reconnect: true,
 });
 
-const diskPath = "/uploadsFolder"; // Change this to your actual mount path
+const diskPath = path.join(__dirname, "uploadsFolder"); // Change this to your actual mount path
 
 console.log("CLIENT_ORIGIN:", process.env.CLIENT_ORIGIN);
 const waitingQueue = new Map(); // Use a Map to manage the queue
