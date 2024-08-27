@@ -20,6 +20,8 @@ const io = socketIO(server, {
   reconnect: true,
 });
 
+const diskPath = "/uploadsFolder"; // Change this to your actual mount path
+
 console.log("CLIENT_ORIGIN:", process.env.CLIENT_ORIGIN);
 const waitingQueue = new Map(); // Use a Map to manage the queue
 let userCount = 0;
@@ -31,7 +33,7 @@ app.use(express.json());
 app.post("/api/identify-user", (req, res) => {
   const { visitorId } = req.body;
 
-  const banFilePath = path.join(__dirname, "bannedUsers.txt");
+  const banFilePath = path.join(diskPath, "bannedUsers.txt");
   const banList = fs.existsSync(banFilePath)
     ? fs.readFileSync(banFilePath, "utf-8")
     : "";
@@ -47,12 +49,13 @@ app.post("/api/identify-user", (req, res) => {
 });
 
 // Ensure the file exists before appending
-const banFilePath = path.join(__dirname, "bannedUsers.txt");
+const banFilePath = path.join(diskPath, "bannedUsers.txt");
 if (!fs.existsSync(banFilePath)) {
   fs.writeFileSync(banFilePath, ""); // Create an empty file if it doesn't exist
 }
 
 // Endpoint to ban a user using a query parameter and a reason
+// Update the rest of your code to use the new paths
 app.post("/api/ban-user", (req, res) => {
   const visitorId = req.query.id; // Get visitorId from the query string
   const reason = req.body.reason || "No reason provided"; // Get the reason from the request body
@@ -61,7 +64,6 @@ app.post("/api/ban-user", (req, res) => {
     return res.status(400).json({ message: "Visitor ID is required." });
   }
 
-  const banFilePath = path.join(__dirname, "bannedUsers.txt");
   const banList = fs.existsSync(banFilePath)
     ? fs.readFileSync(banFilePath, "utf-8")
     : "";
@@ -87,7 +89,7 @@ app.post("/api/unban-user", (req, res) => {
     return res.status(400).json({ message: "Visitor ID is required." });
   }
 
-  const banFilePath = path.join(__dirname, "bannedUsers.txt");
+  const banFilePath = path.join(diskPath, "bannedUsers.txt");
   const banList = fs.existsSync(banFilePath)
     ? fs.readFileSync(banFilePath, "utf-8")
     : "";
@@ -155,7 +157,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("startMatch", ({ username, interest, visitorId }) => {
-    const banFilePath = path.join(__dirname, "bannedUsers.txt");
+    const banFilePath = path.join(diskPath, "bannedUsers.txt");
     const banList = fs.existsSync(banFilePath)
       ? fs.readFileSync(banFilePath, "utf-8")
       : "";
@@ -566,7 +568,7 @@ bot.onText(/\/banlist/, (msg) => {
 
   try {
     // Read the banned users file
-    const banFilePath = path.join(__dirname, "bannedUsers.txt");
+    const banFilePath = path.join(diskPath, "bannedUsers.txt");
 
     if (fs.existsSync(banFilePath)) {
       const banList = fs.readFileSync(banFilePath, "utf-8");
@@ -775,7 +777,7 @@ bot.onText(/\/say (.+)/, (msg, match) => {
   // Send a confirmation message back to the Telegram chat
   bot.sendMessage(chatId, `Message sent to all users: "${textToSay}"`);
 });
-const stickersFilePath = path.join(__dirname, "stickers.txt");
+const stickersFilePath = path.join(diskPath, "stickers.txt");
 
 // Function to load stickers from the text file
 const loadStickers = () => {
@@ -789,7 +791,12 @@ const loadStickers = () => {
 // Load stickers when the server starts
 let stickers = loadStickers();
 
-// Ensure the stickers.txt file exists
+// Ensure the ban file exists
+if (!fs.existsSync(banFilePath)) {
+  fs.writeFileSync(banFilePath, ""); // Create an empty file if it doesn't exist
+}
+
+// Ensure the stickers file exists
 const ensureStickersFileExists = () => {
   if (!fs.existsSync(stickersFilePath)) {
     fs.writeFileSync(stickersFilePath, ""); // Create an empty file if it doesn't exist
@@ -800,14 +807,11 @@ const ensureStickersFileExists = () => {
 ensureStickersFileExists();
 
 app.post("/add-sticker", (req, res) => {
-  console.log("Received request with URL:", req.body.stickerUrl); // Log the received URL
-
   const { stickerUrl } = req.body;
 
   if (stickerUrl && !stickers.includes(stickerUrl)) {
     stickers.push(stickerUrl);
     io.emit("new-sticker", stickerUrl);
-    console.log("New sticker broadcasted:", stickerUrl);
 
     // Append the new sticker URL to the text file
     fs.appendFileSync(stickersFilePath, `${stickerUrl}\n`);
