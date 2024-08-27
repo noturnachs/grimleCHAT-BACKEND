@@ -769,6 +769,58 @@ bot.onText(/\/say (.+)/, (msg, match) => {
   bot.sendMessage(chatId, `Message sent to all users: "${textToSay}"`);
 });
 
+const stickers = [
+  "https://media.tenor.com/wrMDu29fA-YAAAAi/hasher-happy-sticker.gif",
+]; // Store sticker URLs
+
+app.post("/add-sticker", (req, res) => {
+  console.log("Received request with URL:", req.body.stickerUrl); // Log the received URL
+
+  const { stickerUrl } = req.body;
+
+  if (stickerUrl && !stickers.includes(stickerUrl)) {
+    stickers.push(stickerUrl);
+    io.emit("new-sticker", stickerUrl);
+    console.log("New sticker broadcasted:", stickerUrl);
+
+    res
+      .status(200)
+      .send({ success: true, message: "Sticker added successfully" });
+  } else {
+    res
+      .status(400)
+      .send({ success: false, message: "Invalid or duplicate sticker URL" });
+  }
+});
+
+bot.onText(/\/addstix (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const stickerUrl = match[1];
+
+  console.log("Received command with URL:", stickerUrl);
+
+  if (stickerUrl) {
+    fetch(`${process.env.SERVER_ORIGIN}/add-sticker`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stickerUrl }),
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data.success) {
+          bot.sendMessage(chatId, "Sticker added successfully!");
+        } else {
+          bot.sendMessage(chatId, "Failed to add sticker. Please try again.");
+        }
+      })
+      .catch((error) => {
+        bot.sendMessage(chatId, `Error: ${error.message}`);
+      });
+  } else {
+    bot.sendMessage(chatId, "Please provide a valid sticker URL.");
+  }
+});
+
 const PORT = process.env.PORT;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
