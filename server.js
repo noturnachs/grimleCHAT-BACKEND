@@ -21,7 +21,11 @@ const io = socketIO(server, {
 });
 
 // Set the disk path to the mounted uploads folder
-const diskPath = "/mnt/uploadsFolder"; // This is the mount path you set on Render
+// Set the disk path based on the environment
+const diskPath =
+  process.env.NODE_ENV === "production"
+    ? "/mnt/uploadsFolder" // This is the mount path you set on Render
+    : "uploadsFolder"; // Local path for development
 
 // Ensure the uploads folder exists
 if (!fs.existsSync(diskPath)) {
@@ -52,27 +56,31 @@ app.post("/api/identify-user", (req, res) => {
   const { visitorId } = req.body;
 
   // Validate visitorId
-  if (!visitorId || typeof visitorId !== 'string') {
+  if (!visitorId || typeof visitorId !== "string") {
     return res.status(400).json({ message: "Invalid visitor ID." });
   }
 
   // Read the ban list from the file
   let banList;
   try {
-    banList = fs.existsSync(banFilePath) ? fs.readFileSync(banFilePath, "utf-8") : "";
+    banList = fs.existsSync(banFilePath)
+      ? fs.readFileSync(banFilePath, "utf-8")
+      : "";
   } catch (error) {
     console.error("Error reading ban file:", error);
     return res.status(500).json({ message: "Internal server error." });
   }
 
   // Check if the visitorId is in the ban list
-  const isBanned = banList.split('\n').some(line => {
+  const isBanned = banList.split("\n").some((line) => {
     const trimmedLine = line.trim();
     return trimmedLine.includes(`ID: ${visitorId}`); // Check if the line contains the visitorId
   });
-  
+
   if (isBanned) {
-    return res.status(403).json({ message: "You are banned from this platform." });
+    return res
+      .status(403)
+      .json({ message: "You are banned from this platform." });
   }
 
   // Proceed normally if the user is not banned
