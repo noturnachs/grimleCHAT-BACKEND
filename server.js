@@ -51,6 +51,31 @@ let userCount = 0;
 app.use(cors());
 app.use(express.json());
 
+// Utility function to check if a user is banned
+const isUserBanned = (visitorId) => {
+  if (!fs.existsSync(banFilePath)) {
+    return false; // If the file doesn't exist, the user is not banned
+  }
+
+  const data = fs.readFileSync(banFilePath, "utf-8");
+  return data.split("\n").some((line) => line.includes(`ID: ${visitorId}`));
+};
+
+// Utility function to ban a user
+const banUser = (visitorId, reason) => {
+  const banDetails = `${new Date().toISOString()} - ID: ${visitorId}, Reason: ${reason}\n`;
+  fs.appendFileSync(banFilePath, banDetails); // Append to the ban file
+};
+
+// Utility function to unban a user
+const unbanUser = (visitorId) => {
+  const banEntries = fs.readFileSync(banFilePath, "utf-8").split("\n");
+  const updatedEntries = banEntries.filter(
+    (entry) => !entry.includes(`ID: ${visitorId}`)
+  );
+  fs.writeFileSync(banFilePath, updatedEntries.join("\n")); // Write the updated list back to the file
+};
+
 // Endpoint to identify and check if a user is banned
 app.post("/api/identify-user", (req, res) => {
   const { visitorId } = req.body;
@@ -60,29 +85,15 @@ app.post("/api/identify-user", (req, res) => {
     return res.status(400).json({ message: "Invalid visitor ID." });
   }
 
-  // Read the ban list from the file
-  let banList;
-  try {
-    banList = fs.existsSync(banFilePath)
-      ? fs.readFileSync(banFilePath, "utf-8")
-      : "";
-  } catch (error) {
-    console.error("Error reading ban file:", error);
-    return res.status(500).json({ message: "Internal server error." });
-  }
-
   // Check if the visitorId is in the ban list
-  const isBanned = banList.split("\n").some((line) => {
-    const trimmedLine = line.trim();
-    return trimmedLine.includes(`ID: ${visitorId}`); // Check if the line contains the visitorId
-  });
-
-  if (isBanned) {
+  if (isUserBanned(visitorId)) {
+    console.log(`Visitor ID ${visitorId} is banned.`);
     return res
       .status(403)
       .json({ message: "You are banned from this platform." });
   }
 
+  console.log(`Visitor ID ${visitorId} is not banned.`);
   // Proceed normally if the user is not banned
   res.status(200).json({ message: "Welcome!" });
 });
@@ -96,18 +107,12 @@ app.post("/api/ban-user", (req, res) => {
     return res.status(400).json({ message: "Visitor ID is required." });
   }
 
-  const banList = fs.existsSync(banFilePath)
-    ? fs.readFileSync(banFilePath, "utf-8")
-    : "";
-
-  if (banList.includes(`ID: ${visitorId}`)) {
+  if (isUserBanned(visitorId)) {
     return res.status(400).json({ message: "User is already banned." });
   }
 
-  // Log the ban to a file
-  const banDetails = `${new Date().toISOString()} - ID: ${visitorId}, Reason: ${reason}\n`;
-  fs.appendFileSync(banFilePath, banDetails);
-
+  // Ban the user
+  banUser(visitorId, reason);
   res.status(200).json({
     message: `User with ID ${visitorId} has been banned. Reason: ${reason}`,
   });
@@ -121,31 +126,18 @@ app.post("/api/unban-user", (req, res) => {
     return res.status(400).json({ message: "Visitor ID is required." });
   }
 
-  const banList = fs.existsSync(banFilePath)
-    ? fs.readFileSync(banFilePath, "utf-8")
-    : "";
-
-  console.log("Current ban list:", banList); // Debugging: log the current ban list
-
-  if (banList.includes(`ID: ${visitorId}`)) {
-    const updatedBanList = banList
-      .split("\n")
-      .filter((line) => line.trim() && !line.includes(`ID: ${visitorId}`)) // Trim and check for empty lines
-      .join("\n");
-
-    fs.writeFileSync(banFilePath, updatedBanList);
-    console.log("Updated ban list:", updatedBanList); // Debugging: log the updated ban list
-
-    res
-      .status(200)
-      .json({ message: `User with ID ${visitorId} has been unbanned.` });
-  } else {
-    res.status(404).json({
+  if (!isUserBanned(visitorId)) {
+    return res.status(404).json({
       message: `User with ID ${visitorId} was not found in the banned list.`,
     });
   }
-});
 
+  // Unban the user
+  unbanUser(visitorId);
+  res
+    .status(200)
+    .json({ message: `User with ID ${visitorId} has been unbanned.` });
+});
 // Admin password validation endpoint
 app.post("/validate-admin", (req, res) => {
   const { password } = req.body;
