@@ -17,7 +17,6 @@ const io = socketIO(server, {
   },
   pingInterval: 25000,
   pingTimeout: 60000,
-  reconnect: true,
 });
 
 // New endpoint to get messages from a specific room
@@ -180,6 +179,17 @@ io.on("connection", (socket) => {
   userCount++;
   io.emit("userCountUpdate", userCount);
 
+  // Check if the user was previously in the queue
+  if (socket.username && socket.interest) {
+    waitingQueue.set(socket.id, {
+      socket,
+      username: socket.username,
+      interest: socket.interest,
+      joinedAt: Date.now(),
+    });
+    console.log(`${socket.username} re-added to the waiting queue.`);
+  }
+
   // Listen for the triggerEffect event
   socket.on("triggerEffect", ({ effect, room }) => {
     console.log(`Effect triggered: ${effect} in room: ${room}`);
@@ -196,6 +206,14 @@ io.on("connection", (socket) => {
     if (banList.includes(`ID: ${visitorId}`)) {
       socket.emit("banned", { message: "You are banned from this platform." });
       return;
+    }
+
+    // Check if the user is already in the waiting queue
+    if (waitingQueue.has(socket.id)) {
+      console.log(
+        `User ${username} (Visitor ID: ${visitorId}) is already in the waiting queue`
+      );
+      return; // Exit if the user is already in the queue
     }
 
     // Set the visitorId on the socket object
@@ -336,6 +354,8 @@ io.on("connection", (socket) => {
       `User with socket ID ${socket.id} (Visitor ID: ${socket.visitorId}) disconnected`
     );
     handleLeaveRoom(socket);
+    handleLeaveQueue(socket, socket.username); // Ensure the user is removed from the queue
+
     userCount--;
     io.emit("userCountUpdate", userCount);
   });
