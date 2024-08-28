@@ -208,14 +208,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Check if the user is already in the waiting queue
-    if (waitingQueue.has(socket.id)) {
-      console.log(
-        `User ${username} (Visitor ID: ${visitorId}) is already in the waiting queue`
-      );
-      return; // Exit if the user is already in the queue
-    }
-
     // Set the visitorId on the socket object
     socket.visitorId = visitorId;
 
@@ -231,6 +223,7 @@ io.on("connection", (socket) => {
       )}`
     );
 
+    // Check if the user is already in the waiting queue
     if (waitingQueue.has(socket.id)) {
       console.log(
         `User ${username} (Visitor ID: ${visitorId}) is already in the waiting queue`
@@ -278,6 +271,22 @@ io.on("connection", (socket) => {
         message: "Room not found.",
         rooms: createdRooms,
       });
+    }
+  });
+
+  socket.on("reconnect", () => {
+    console.log(`Socket reconnected with ID: ${socket.id}`);
+    // Re-add the user to the room or queue if necessary
+    if (socket.username && socket.interest) {
+      waitingQueue.set(socket.id, {
+        socket,
+        username: socket.username,
+        interest: socket.interest,
+        joinedAt: Date.now(),
+      });
+      console.log(
+        `${socket.username} re-added to the waiting queue after reconnect.`
+      );
     }
   });
 
