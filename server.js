@@ -12,7 +12,7 @@ const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
 const io = socketIO(server, {
   cors: {
-    origin: process.env.CLIENT_ORIGIN, // for prod
+    origin: [process.env.CLIENT_ORIGIN, "https://lcccc.onrender.com"], // Add another origin here
     methods: ["GET", "POST"],
   },
   pingInterval: 25000,
