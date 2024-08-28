@@ -20,6 +20,8 @@ const io = socketIO(server, {
   reconnect: true,
 });
 
+// New endpoint to get messages from a specific room
+
 // Set the disk path to the mounted uploads folder
 // Set the disk path based on the environment
 const diskPath =
@@ -166,6 +168,9 @@ function areSimilar(word1, word2) {
   );
 }
 
+const roomMessages = {};
+const createdRooms = []; // Array to store created room names
+
 io.on("connection", (socket) => {
   console.log(
     "A user connected with socket ID:",
@@ -238,6 +243,26 @@ io.on("connection", (socket) => {
     }, 5000); // Start matching after 5 seconds
   });
 
+  // Endpoint to get messages from a specific room and all available rooms
+  app.get("/api/messages/:room", (req, res) => {
+    const { room } = req.params;
+
+    // Check if there are messages for the specified room
+    if (roomMessages[room]) {
+      res.status(200).json({
+        success: true,
+        messages: roomMessages[room],
+        rooms: createdRooms,
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        message: "Room not found.",
+        rooms: createdRooms,
+      });
+    }
+  });
+
   // Listen for the fingerprint event
   socket.on("fingerprintGenerated", (visitorId) => {
     console.log("Fingerprint received from client:", visitorId);
@@ -245,6 +270,24 @@ io.on("connection", (socket) => {
 
   socket.on("sendMessage", ({ room, message }) => {
     const visitorId = socket.visitorId; // Retrieve the visitorId from the socket object
+
+    // Store the message in the roomMessages object
+    if (!roomMessages[room]) {
+      roomMessages[room] = []; // Initialize the array if it doesn't exist
+    }
+
+    // Check if the message contains text and is not empty
+    if (
+      message.messageText &&
+      typeof message.messageText === "string" &&
+      message.messageText.trim() !== ""
+    ) {
+      roomMessages[room].push({
+        username: message.username,
+        messageText: message.messageText,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // Check if the message contains images
     if (message.images) {
@@ -302,6 +345,12 @@ io.on("connection", (socket) => {
   });
 });
 
+// Endpoint to get the list of available rooms
+app.get("/api/rooms", (req, res) => {
+  const availableRooms = createdRooms; // Use the createdRooms array to get the list of rooms
+  res.status(200).json({ success: true, rooms: availableRooms });
+});
+
 function matchUsers(socket) {
   // Check if the user is already in a room
   const rooms = Array.from(socket.rooms);
@@ -352,6 +401,9 @@ function matchUsers(socket) {
 
   if (user1 && user2) {
     const room = `room-${user1.username}-${user2.username}`;
+
+    // Add the created room to the createdRooms array
+    createdRooms.push(room);
 
     console.log(
       `Matching ${user1.username} (Visitor ID: ${user1.socket.visitorId}) and ${user2.username} (Visitor ID: ${user2.socket.visitorId}) in room ${room}`
@@ -435,6 +487,13 @@ function handleLeaveRoom(socket) {
         );
       }
     }
+  }
+
+  // Remove the room from createdRooms
+  const roomIndex = createdRooms.indexOf(room);
+  if (roomIndex !== -1) {
+    createdRooms.splice(roomIndex, 1); // Remove the room from the array
+    console.log(`Room ${room} has been removed from createdRooms.`);
   }
 
   handleLeaveQueue(socket, username); // Remove user from queue when they leave the room
