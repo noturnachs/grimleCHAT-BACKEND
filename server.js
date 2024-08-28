@@ -17,6 +17,7 @@ const io = socketIO(server, {
   },
   pingInterval: 25000,
   pingTimeout: 60000,
+  reconnect: true,
 });
 
 // New endpoint to get messages from a specific room
@@ -179,17 +180,6 @@ io.on("connection", (socket) => {
   userCount++;
   io.emit("userCountUpdate", userCount);
 
-  // Check if the user was previously in the queue
-  if (socket.username && socket.interest) {
-    waitingQueue.set(socket.id, {
-      socket,
-      username: socket.username,
-      interest: socket.interest,
-      joinedAt: Date.now(),
-    });
-    console.log(`${socket.username} re-added to the waiting queue.`);
-  }
-
   // Listen for the triggerEffect event
   socket.on("triggerEffect", ({ effect, room }) => {
     console.log(`Effect triggered: ${effect} in room: ${room}`);
@@ -223,7 +213,6 @@ io.on("connection", (socket) => {
       )}`
     );
 
-    // Check if the user is already in the waiting queue
     if (waitingQueue.has(socket.id)) {
       console.log(
         `User ${username} (Visitor ID: ${visitorId}) is already in the waiting queue`
@@ -271,22 +260,6 @@ io.on("connection", (socket) => {
         message: "Room not found.",
         rooms: createdRooms,
       });
-    }
-  });
-
-  socket.on("reconnect", () => {
-    console.log(`Socket reconnected with ID: ${socket.id}`);
-    // Re-add the user to the room or queue if necessary
-    if (socket.username && socket.interest) {
-      waitingQueue.set(socket.id, {
-        socket,
-        username: socket.username,
-        interest: socket.interest,
-        joinedAt: Date.now(),
-      });
-      console.log(
-        `${socket.username} re-added to the waiting queue after reconnect.`
-      );
     }
   });
 
@@ -363,8 +336,6 @@ io.on("connection", (socket) => {
       `User with socket ID ${socket.id} (Visitor ID: ${socket.visitorId}) disconnected`
     );
     handleLeaveRoom(socket);
-    handleLeaveQueue(socket, socket.username); // Ensure the user is removed from the queue
-
     userCount--;
     io.emit("userCountUpdate", userCount);
   });
