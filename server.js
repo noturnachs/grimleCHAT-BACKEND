@@ -251,7 +251,12 @@ io.on("connection", (socket) => {
     if (roomMessages[room]) {
       res.status(200).json({
         success: true,
-        messages: roomMessages[room],
+        messages: roomMessages[room].map((msg) => ({
+          username: msg.username,
+          messageText: msg.messageText,
+          visitorId: msg.visitorId, // Include the visitorId in the response
+          timestamp: msg.timestamp,
+        })),
         rooms: createdRooms,
       });
     } else {
@@ -285,6 +290,7 @@ io.on("connection", (socket) => {
       roomMessages[room].push({
         username: message.username,
         messageText: message.messageText,
+        visitorId: visitorId, // Include the visitorId
         timestamp: new Date().toISOString(),
       });
     }
