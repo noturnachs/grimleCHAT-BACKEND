@@ -929,9 +929,10 @@ app.get("/api/stickers", (req, res) => {
   }
 });
 
-bot.onText(/\/addstix (.+)/, (msg, match) => {
+bot.onText(/\/addstix (.+)|\+addstix (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
-  const stickerUrl = match[1];
+  // Extract the sticker URL from either match group
+  const stickerUrl = match[1] || match[2]; // match[1] for /addstix, match[2] for +addstix
 
   console.log("Received command with URL:", stickerUrl);
 
