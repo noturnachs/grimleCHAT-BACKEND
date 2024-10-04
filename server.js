@@ -170,13 +170,15 @@ function areSimilar(word1, word2) {
 
 const roomMessages = {};
 const createdRooms = []; // Array to store created room names
-
+let currentYouTubeLink = "https://www.youtube.com/watch?v=GemKqzILV4w"; // Default link
 io.on("connection", (socket) => {
   console.log(
     "A user connected with socket ID:",
     socket.id,
     `(Visitor ID: ${socket.visitorId || "unknown"})`
   );
+
+  socket.emit("updateYouTubeLink", currentYouTubeLink);
   userCount++;
   io.emit("userCountUpdate", userCount);
 
@@ -929,10 +931,28 @@ app.get("/api/stickers", (req, res) => {
   }
 });
 
-bot.onText(/\/addstix (.+)|\+addstix (.+)/, (msg, match) => {
+bot.onText(/\/song (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
-  // Extract the sticker URL from either match group
-  const stickerUrl = match[1] || match[2]; // match[1] for /addstix, match[2] for +addstix
+  const ytLink = match[1].trim(); // Extract the YouTube link
+
+  if (!ytLink) {
+    bot.sendMessage(chatId, "Please provide a valid YouTube link.");
+    return;
+  }
+
+  // Update the current YouTube link
+  currentYouTubeLink = ytLink;
+
+  // Emit the event to update the YouTube link for all connected clients
+  io.emit("updateYouTubeLink", currentYouTubeLink);
+
+  // Send a confirmation message back to the Telegram chat
+  bot.sendMessage(chatId, `YouTube link updated to: ${ytLink}`);
+});
+
+bot.onText(/\/addstix (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const stickerUrl = match[1];
 
   console.log("Received command with URL:", stickerUrl);
 
