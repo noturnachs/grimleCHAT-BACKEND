@@ -5,14 +5,16 @@ const socketIO = require("socket.io");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
-const app = express();
-const server = http.createServer(app);
 const multer = require("multer");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
+const TelegramBot = require("node-telegram-bot-api");
+
+const app = express();
+const server = http.createServer(app);
 const io = socketIO(server, {
   cors: {
-    origin: [process.env.CLIENT_ORIGIN, "https://lcccc.onrender.com"], // Add another origin here
+    origin: [process.env.CLIENT_ORIGIN, "https://lcccc.onrender.com"],
     methods: ["GET", "POST"],
   },
   pingInterval: 25000,
@@ -20,10 +22,46 @@ const io = socketIO(server, {
   reconnect: true,
 });
 
-// New endpoint to get messages from a specific room
+ffmpeg.setFfmpegPath(ffmpegPath);
 
-// Set the disk path to the mounted uploads folder
-// Set the disk path based on the environment
+app.use(cors());
+app.use(express.json());
+
+const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
+
+let userCount = 0;
+let waitingQueue = new Map();
+let createdRooms = [];
+let roomMessages = {};
+let announcement = "Welcome to LeeyosChat!"; // Default announcement
+
+// Multer configuration
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/");
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+
+const fileFilter = (req, file, cb) => {
+  const allowedMimeTypes = ["image/png", "image/jpeg", "image/jpg"];
+  if (allowedMimeTypes.includes(file.mimetype)) {
+    cb(null, true); // Accept the file
+  } else {
+    cb(
+      new Error("Invalid file type. Only PNG, JPG, and JPEG are allowed."),
+      false
+    ); // Reject the file
+  }
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+});
+
 const diskPath =
   process.env.NODE_ENV === "production"
     ? "/mnt/uploadsFolder" // This is the mount path you set on Render
@@ -47,8 +85,6 @@ if (!fs.existsSync(stickersFilePath)) {
 }
 
 console.log("CLIENT_ORIGIN:", process.env.CLIENT_ORIGIN);
-const waitingQueue = new Map(); // Use a Map to manage the queue
-let userCount = 0;
 
 app.use(cors());
 app.use(express.json());
@@ -150,26 +186,13 @@ app.post("/validate-admin", (req, res) => {
   }
 });
 
-function areSimilar(word1, word2) {
-  const normalizedWord1 = word1.toLowerCase().trim();
-  const normalizedWord2 = word2.toLowerCase().trim();
-
-  if (
-    normalizedWord1.includes(normalizedWord2) ||
-    normalizedWord2.includes(normalizedWord1)
-  ) {
-    return true;
-  }
-
-  const minLength = 3;
+function areSimilar(str1, str2) {
   return (
-    normalizedWord1.startsWith(normalizedWord2.slice(0, minLength)) ||
-    normalizedWord2.startsWith(normalizedWord1.slice(0, minLength))
+    str1.toLowerCase().includes(str2.toLowerCase()) ||
+    str2.toLowerCase().includes(str1.toLowerCase())
   );
 }
 
-const roomMessages = {};
-const createdRooms = []; // Array to store created room names
 let currentYouTubeLink = "https://www.youtube.com/watch?v=GemKqzILV4w"; // Default link
 io.on("connection", (socket) => {
   console.log(
@@ -177,6 +200,41 @@ io.on("connection", (socket) => {
     socket.id,
     `(Visitor ID: ${socket.visitorId || "unknown"})`
   );
+
+  socket.on("fetchMissedMessages", ({ room, lastMessageTimestamp }) => {
+    if (roomMessages[room]) {
+      const missedMessages = roomMessages[room].filter(
+        (msg) => msg.timestamp > lastMessageTimestamp
+      );
+      socket.emit("missedMessages", missedMessages);
+    }
+  });
+
+  socket.on("rejoinRoom", ({ room, username, visitorId }) => {
+    socket.join(room);
+    socket.to(room).emit("userRejoined", { username, visitorId });
+  });
+
+  // Add this new event listener for reconnection
+  socket.on("userReconnected", ({ username, visitorId, room }) => {
+    console.log(
+      `User ${username} (Visitor ID: ${visitorId}) reconnected to room ${room}`
+    );
+
+    // Rejoin the room
+    socket.join(room);
+
+    // Fetch recent messages for the room
+    const recentMessages = roomMessages[room]
+      ? roomMessages[room].slice(-20)
+      : [];
+
+    // Send recent messages to the reconnected user
+    socket.emit("reconnectionMessages", recentMessages);
+
+    // Notify other users in the room about the reconnection
+    socket.to(room).emit("userReconnected", { username, visitorId });
+  });
 
   socket.emit("updateYouTubeLink", currentYouTubeLink);
   userCount++;
@@ -283,18 +341,33 @@ io.on("connection", (socket) => {
       roomMessages[room] = []; // Initialize the array if it doesn't exist
     }
 
+    // Generate timestamp if not provided
+    const timestamp = message.timestamp || Date.now();
+
     // Check if the message contains text and is not empty
     if (
       message.messageText &&
       typeof message.messageText === "string" &&
       message.messageText.trim() !== ""
     ) {
+      const messageWithTimestamp = {
+        ...message,
+        timestamp: timestamp,
+      };
+      io.emit("chat message", messageWithTimestamp);
       roomMessages[room].push({
         username: message.username,
         messageText: message.messageText,
-        visitorId: visitorId, // Include the visitorId
-        timestamp: new Date().toISOString(),
+        visitorId: visitorId,
+        timestamp: new Date(timestamp).toISOString(),
       });
+      console.log(
+        `Message from ${
+          message.username
+        } (Visitor ID: ${visitorId}) in room ${room} at ${new Date(
+          timestamp
+        ).toISOString()}: ${message.messageText}`
+      );
     }
 
     // Check if the message contains images
@@ -308,26 +381,33 @@ io.on("connection", (socket) => {
     // Check if the message contains a GIF
     if (message.gif) {
       console.log(
-        `Received GIF message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}`
+        `Received GIF message from ${
+          message.username
+        } (Visitor ID: ${visitorId}) in room ${room} at ${new Date(
+          timestamp
+        ).toISOString()}`
       );
       io.to(room).emit("message", {
         username: message.username,
-        gif: message.gif, // Broadcast the GIF URL to all clients in the room
+        gif: message.gif,
+        timestamp: timestamp,
       });
     } else if (message.audio) {
       sendVoiceMessageToTelegram(message.audio, visitorId);
       console.log(
-        `Received audio message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}`
+        `Received audio message from ${
+          message.username
+        } (Visitor ID: ${visitorId}) in room ${room} at ${new Date(
+          timestamp
+        ).toISOString()}`
       );
       io.to(room).emit("message", {
         username: message.username,
-        audio: message.audio, // Broadcast the base64 audio data to all clients in the room
+        audio: message.audio,
+        timestamp: timestamp,
       });
     } else {
-      console.log(
-        `Message from ${message.username} (Visitor ID: ${visitorId}) in room ${room}: ${message.messageText}`
-      );
-      io.to(room).emit("message", message);
+      io.to(room).emit("message", { ...message, timestamp: timestamp });
     }
   });
 
@@ -343,7 +423,15 @@ io.on("connection", (socket) => {
     console.log(
       `User with socket ID ${socket.id} (Visitor ID: ${socket.visitorId}) disconnected`
     );
-    handleLeaveRoom(socket);
+    // Don't remove the user from the room immediately
+    // Instead, set a timeout to remove them if they don't reconnect
+    setTimeout(() => {
+      const rooms = Array.from(socket.rooms);
+      const room = rooms.find((r) => r.startsWith("room-"));
+      if (room && !io.sockets.adapter.rooms.get(room).has(socket.id)) {
+        handleLeaveRoom(socket);
+      }
+    }, 30000); // 30 seconds timeout
     userCount--;
     io.emit("userCountUpdate", userCount);
   });
@@ -474,7 +562,7 @@ function handleLeaveRoom(socket) {
   const room = rooms.find((r) => r.startsWith("room-"));
   if (room) {
     socket.leave(room);
-    io.to(room).emit("typing", { username, typing: false }); // Stop typing indicator when user leaves
+    io.to(room).emit("typing", { username, typing: false });
     io.to(room).emit("message", {
       username: "System",
       messageText: `${username} (Visitor ID: ${visitorId}) has left the chat.`,
@@ -490,21 +578,21 @@ function handleLeaveRoom(socket) {
           username: username,
         });
         remainingUserSocket.leave(room);
-        console.log(
-          `${username} (Visitor ID: ${visitorId}) left the chat. ${remainingUserSocket.username} (Visitor ID: ${remainingUserSocket.visitorId}) is back in the queue.`
-        );
       }
+    }
+
+    // Clear room messages
+    delete roomMessages[room];
+
+    // Remove the room from createdRooms
+    const roomIndex = createdRooms.indexOf(room);
+    if (roomIndex !== -1) {
+      createdRooms.splice(roomIndex, 1);
+      console.log(`Room ${room} has been removed from createdRooms.`);
     }
   }
 
-  // Remove the room from createdRooms
-  const roomIndex = createdRooms.indexOf(room);
-  if (roomIndex !== -1) {
-    createdRooms.splice(roomIndex, 1); // Remove the room from the array
-    console.log(`Room ${room} has been removed from createdRooms.`);
-  }
-
-  handleLeaveQueue(socket, username); // Remove user from queue when they leave the room
+  handleLeaveQueue(socket, username);
 }
 
 function handleLeaveQueue(socket, username) {
@@ -522,8 +610,6 @@ function handleLeaveQueue(socket, username) {
   );
 }
 
-let announcement = "Welcome to LeeyosChat!"; // Default announcement
-
 app.get("/announcement", (req, res) => {
   res.json({ announcement });
 });
@@ -538,9 +624,6 @@ app.post("/update-announcement", (req, res) => {
     res.status(400).json({ success: false, message: "Invalid announcement" });
   }
 });
-
-const TelegramBot = require("node-telegram-bot-api");
-const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
 
 function sendImageToTelegram(imageBase64, visitorId) {
   const chatId = process.env.TELEGRAM_CHAT_ID_IMG; // Your Telegram group chat ID
@@ -686,21 +769,6 @@ bot.onText(/\/banlist/, (msg) => {
     bot.sendMessage(chatId, "An error occurred while reading the ban list.");
   }
 });
-
-const fileFilter = (req, file, cb) => {
-  const allowedMimeTypes = ["image/png", "image/jpeg", "image/jpg"];
-  if (allowedMimeTypes.includes(file.mimetype)) {
-    cb(null, true); // Accept the file
-  } else {
-    cb(
-      new Error("Invalid file type. Only PNG, JPG, and JPEG are allowed."),
-      false
-    ); // Reject the file
-  }
-};
-
-// Initialize multer with the file filter
-const upload = multer({ fileFilter });
 
 function sendVoiceMessageToTelegram(audioBase64, visitorId) {
   const chatId = process.env.TELEGRAM_CHAT_ID_IMG; // Your Telegram group chat ID
@@ -978,7 +1046,7 @@ bot.onText(/\/addstix (.+)/, (msg, match) => {
   }
 });
 
-const PORT = process.env.PORT || 3000; // Default to 3000 if PORT is not set
+const PORT = process.env.PORT || 3002; // Default to 3000 if PORT is not set
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
