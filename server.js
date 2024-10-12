@@ -694,23 +694,52 @@ app.post("/update-announcement", (req, res) => {
   }
 });
 
-function sendImageToTelegram(imageBase64, visitorId) {
+async function sendImageToTelegram(imageData, visitorId) {
   const chatId = process.env.TELEGRAM_CHAT_ID_IMG; // Your Telegram group chat ID
 
-  // Convert base64 to buffer
-  const imageBuffer = Buffer.from(imageBase64.split(",")[1], "base64");
+  let imageBuffer;
 
-  // Send the image to the Telegram group
-  bot
-    .sendPhoto(chatId, imageBuffer, {
+  try {
+    if (imageData instanceof ArrayBuffer) {
+      // If it's an ArrayBuffer, convert it directly to a Buffer
+      imageBuffer = Buffer.from(imageData);
+    } else if (imageData instanceof Blob) {
+      // If it's a Blob, convert it to an ArrayBuffer first
+      const arrayBuffer = await imageData.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
+    } else if (typeof imageData === "string") {
+      // If it's a base64 string
+      const base64Data = imageData.includes(",")
+        ? imageData.split(",")[1]
+        : imageData;
+      imageBuffer = Buffer.from(base64Data, "base64");
+    } else if (Buffer.isBuffer(imageData)) {
+      // If it's already a Buffer
+      imageBuffer = imageData;
+    } else if (
+      typeof imageData === "object" &&
+      imageData.buffer instanceof ArrayBuffer
+    ) {
+      // If it's a typed array (like Uint8Array)
+      imageBuffer = Buffer.from(imageData.buffer);
+    } else {
+      console.error(
+        "Unexpected image data format:",
+        typeof imageData,
+        imageData
+      );
+      return;
+    }
+
+    // Send the image to the Telegram group
+    await bot.sendPhoto(chatId, imageBuffer, {
       caption: `Image from Visitor ID: ${visitorId}`,
-    })
-    .then(() => {
-      console.log(`Image sent to Telegram from Visitor ID: ${visitorId}`);
-    })
-    .catch((error) => {
-      console.error("Error sending image to Telegram:", error);
     });
+
+    console.log(`Image sent to Telegram from Visitor ID: ${visitorId}`);
+  } catch (error) {
+    console.error("Error sending image to Telegram:", error);
+  }
 }
 
 // Existing announcement command
