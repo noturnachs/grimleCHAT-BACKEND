@@ -28,7 +28,7 @@ app.use(cors());
 app.use(express.json());
 
 const bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: true });
-
+const roomLastActivity = {};
 let userCount = 0;
 let waitingQueue = new Map();
 let createdRooms = [];
@@ -114,6 +114,10 @@ const unbanUser = (visitorId) => {
   fs.writeFileSync(banFilePath, updatedEntries.join("\n")); // Write the updated list back to the file
 };
 
+function updateRoomActivity(room) {
+  roomLastActivity[room] = Date.now();
+}
+
 // Endpoint to identify and check if a user is banned
 app.post("/api/identify-user", (req, res) => {
   const { visitorId } = req.body;
@@ -194,6 +198,67 @@ function areSimilar(str1, str2) {
 }
 
 let currentYouTubeLink = "https://www.youtube.com/watch?v=GemKqzILV4w"; // Default link
+
+const INACTIVITY_TIMEOUT = process.env.INACTIVITY_TIMEOUT || 10 * 60 * 1000; // Default to 10 minutes
+
+function checkInactiveRooms() {
+  const now = Date.now();
+
+  for (const room in roomLastActivity) {
+    if (now - roomLastActivity[room] > INACTIVITY_TIMEOUT) {
+      const sockets = io.sockets.adapter.rooms.get(room);
+      if (sockets) {
+        for (const socketId of sockets) {
+          const socket = io.sockets.sockets.get(socketId);
+          if (socket) {
+            socket.emit("roomClosed", {
+              message: "Room closed due to inactivity",
+            });
+            handleLeaveRoom(socket);
+          }
+        }
+      }
+      delete roomLastActivity[room];
+      delete roomMessages[room];
+      const roomIndex = createdRooms.indexOf(room);
+      if (roomIndex !== -1) {
+        createdRooms.splice(roomIndex, 1);
+      }
+      console.log(`Room ${room} closed due to inactivity`);
+    }
+  }
+}
+
+const INACTIVITY_WARNING_TIMEOUT = 8 * 60 * 1000; // 8 minutes in milliseconds
+
+function checkInactiveRoomsAndWarn() {
+  const now = Date.now();
+
+  for (const room in roomLastActivity) {
+    const inactiveTime = now - roomLastActivity[room];
+
+    if (
+      inactiveTime > INACTIVITY_WARNING_TIMEOUT &&
+      inactiveTime <= INACTIVITY_TIMEOUT
+    ) {
+      const sockets = io.sockets.adapter.rooms.get(room);
+      if (sockets) {
+        for (const socketId of sockets) {
+          const socket = io.sockets.sockets.get(socketId);
+          if (socket) {
+            socket.emit("inactivityWarning", {
+              message:
+                "Warning: This room will be closed in 2 minutes due to inactivity.",
+            });
+          }
+        }
+      }
+    }
+  }
+}
+
+setInterval(checkInactiveRoomsAndWarn, 60000); // Check every minute
+
 io.on("connection", (socket) => {
   console.log(
     "A user connected with socket ID:",
@@ -334,6 +399,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sendMessage", ({ room, message }) => {
+    updateRoomActivity(room);
     const visitorId = socket.visitorId; // Retrieve the visitorId from the socket object
 
     // Store the message in the roomMessages object
@@ -548,6 +614,9 @@ function matchUsers(socket) {
     console.log(
       `Users ${user1.username} (Visitor ID: ${user1.socket.visitorId}) and ${user2.username} (Visitor ID: ${user2.socket.visitorId}) have joined room ${room}`
     );
+
+    // Initialize room activity
+    updateRoomActivity(room);
   } else {
     console.log(
       `No match found for user ${socket.username} (Visitor ID: ${socket.visitorId}).`
@@ -1050,3 +1119,5 @@ const PORT = process.env.PORT || 3002; // Default to 3000 if PORT is not set
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
+
+setInterval(checkInactiveRooms, 60000); // Check every minute
