@@ -695,9 +695,8 @@ app.get("/announcement", (req, res) => {
 app.post("/update-announcement", (req, res) => {
   const { newAnnouncement } = req.body;
   if (newAnnouncement && typeof newAnnouncement === "string") {
-    // Replace \\n with actual newline characters
     announcement = newAnnouncement.replace(/\\n/g, "\n");
-    io.emit("announcementUpdate", announcement); // Notify connected clients
+    io.emit("announcementUpdate", announcement);
     res.json({ success: true, announcement });
   } else {
     res.status(400).json({ success: false, message: "Invalid announcement" });
@@ -755,7 +754,9 @@ async function sendImageToTelegram(imageData, visitorId) {
 // Existing announcement command
 bot.onText(/\/announce (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
-  const newAnnouncement = match[1]; // the announcement message
+  const newAnnouncement = match[1];
+  const telegramFormatted = parseColorTagsForTelegram(newAnnouncement);
+  const clientFormatted = parseColorTagsForClient(newAnnouncement);
 
   // Update the announcement via your API
   fetch(`${process.env.SERVER_ORIGIN}/update-announcement`, {
@@ -763,12 +764,12 @@ bot.onText(/\/announce (.+)/, (msg, match) => {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ newAnnouncement }),
+    body: JSON.stringify({ newAnnouncement: clientFormatted }),
   })
     .then((response) => response.json())
     .then((data) => {
       if (data.success) {
-        bot.sendMessage(chatId, `Announcement updated: ${newAnnouncement}`, {
+        bot.sendMessage(chatId, `Announcement updated: ${telegramFormatted}`, {
           parse_mode: "HTML",
         });
       } else {
@@ -779,7 +780,6 @@ bot.onText(/\/announce (.+)/, (msg, match) => {
       bot.sendMessage(chatId, `Error: ${error.message}`);
     });
 });
-
 // New ban command with reason (reason is optional)
 bot.onText(/\/ban (\S+)(?:\s+(.+))?/, async (msg, match) => {
   const chatId = msg.chat.id;
@@ -1031,15 +1031,43 @@ app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
     });
 });
 
+// Helper function to parse custom color tags
+function parseColorTagsForTelegram(text) {
+  const colorMap = {
+    red: "❤️",
+    green: "💚",
+    blue: "💙",
+    yellow: "💛",
+    purple: "💜",
+    orange: "🧡",
+    black: "🖤",
+    white: "🤍",
+  };
+
+  const colorRegex = /<(\w+)>(.*?)<\/\1>/g;
+  return text.replace(colorRegex, (match, color, content) => {
+    return `${colorMap[color.toLowerCase()] || ""}<b>${content}</b>`;
+  });
+}
+
+function parseColorTagsForClient(text) {
+  const colorRegex = /<(\w+)>(.*?)<\/\1>/g;
+  return text.replace(colorRegex, (match, color, content) => {
+    return `<span style="color: ${color}">${content}</span>`;
+  });
+}
+// Update the /say command
 bot.onText(/\/say (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
-  const textToSay = match[1]; // The text to send to clients, including HTML tags
+  const textToSay = match[1];
+  const telegramFormatted = parseColorTagsForTelegram(textToSay);
+  const clientFormatted = parseColorTagsForClient(textToSay);
 
   // Emit the message to all connected clients, preserving HTML
-  io.emit("telegramMessage", { message: textToSay, isHtml: true });
+  io.emit("telegramMessage", { message: clientFormatted, isHtml: true });
 
   // Send a confirmation message back to the Telegram chat
-  bot.sendMessage(chatId, `Message sent to all users: "${textToSay}"`, {
+  bot.sendMessage(chatId, `Message sent to all users: ${telegramFormatted}`, {
     parse_mode: "HTML",
   });
 });
