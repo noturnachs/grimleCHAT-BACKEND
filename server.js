@@ -691,10 +691,12 @@ app.get("/announcement", (req, res) => {
   res.json({ announcement });
 });
 
+// Update the announcement endpoint
 app.post("/update-announcement", (req, res) => {
   const { newAnnouncement } = req.body;
   if (newAnnouncement && typeof newAnnouncement === "string") {
-    announcement = newAnnouncement;
+    // Replace \\n with actual newline characters
+    announcement = newAnnouncement.replace(/\\n/g, "\n");
     io.emit("announcementUpdate", announcement); // Notify connected clients
     res.json({ success: true, announcement });
   } else {
@@ -766,7 +768,9 @@ bot.onText(/\/announce (.+)/, (msg, match) => {
     .then((response) => response.json())
     .then((data) => {
       if (data.success) {
-        bot.sendMessage(chatId, `Announcement updated: ${newAnnouncement}`);
+        bot.sendMessage(chatId, `Announcement updated: ${newAnnouncement}`, {
+          parse_mode: "HTML",
+        });
       } else {
         bot.sendMessage(chatId, `Failed to update announcement.`);
       }
