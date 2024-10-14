@@ -313,6 +313,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("startMatch", ({ username, interest, visitorId }) => {
+    if (!visitorId) {
+      socket.emit("error", {
+        message: "Please refresh page and try again.",
+      });
+      return;
+    }
     const banList = fs.existsSync(banFilePath)
       ? fs.readFileSync(banFilePath, "utf-8")
       : "";
@@ -531,7 +537,8 @@ function matchUsers(socket) {
   const matchIndex = Array.from(waitingQueue.values()).findIndex(
     (user) =>
       user.socket.id !== socket.id &&
-      !Array.from(user.socket.rooms).some((r) => r.startsWith("room-")) && // Ensure the other user is not already in a room
+      user.socket.visitorId !== socket.visitorId && // Add this line to prevent self-matching
+      !Array.from(user.socket.rooms).some((r) => r.startsWith("room-")) &&
       user.interest.some((userInterest) =>
         socket.interest.some((currentInterest) =>
           areSimilar(userInterest, currentInterest)
@@ -548,6 +555,7 @@ function matchUsers(socket) {
     const randomMatchIndex = Array.from(waitingQueue.values()).findIndex(
       (user) =>
         user.socket.id !== socket.id &&
+        user.socket.visitorId !== socket.visitorId && // Add this line to prevent self-matching
         !Array.from(user.socket.rooms).some((r) => r.startsWith("room-"))
     );
 
@@ -1097,24 +1105,24 @@ app.get("/api/stickers", (req, res) => {
   }
 });
 
-bot.onText(/\/song (.+)/, (msg, match) => {
-  const chatId = msg.chat.id;
-  const ytLink = match[1].trim(); // Extract the YouTube link
+// bot.onText(/\/song (.+)/, (msg, match) => {
+//   const chatId = msg.chat.id;
+//   const ytLink = match[1].trim(); // Extract the YouTube link
 
-  if (!ytLink) {
-    bot.sendMessage(chatId, "Please provide a valid YouTube link.");
-    return;
-  }
+//   if (!ytLink) {
+//     bot.sendMessage(chatId, "Please provide a valid YouTube link.");
+//     return;
+//   }
 
-  // Update the current YouTube link
-  currentYouTubeLink = ytLink;
+//   // Update the current YouTube link
+//   currentYouTubeLink = ytLink;
 
-  // Emit the event to update the YouTube link for all connected clients
-  io.emit("updateYouTubeLink", currentYouTubeLink);
+//   // Emit the event to update the YouTube link for all connected clients
+//   io.emit("updateYouTubeLink", currentYouTubeLink);
 
-  // Send a confirmation message back to the Telegram chat
-  bot.sendMessage(chatId, `YouTube link updated to: ${ytLink}`);
-});
+//   // Send a confirmation message back to the Telegram chat
+//   bot.sendMessage(chatId, `YouTube link updated to: ${ytLink}`);
+// });
 
 bot.onText(/\/addstix (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
