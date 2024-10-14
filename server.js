@@ -1029,13 +1029,15 @@ app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
 
 bot.onText(/\/say (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
-  const textToSay = match[1]; // The text to send to clients
+  const textToSay = match[1]; // The text to send to clients, including HTML tags
 
-  // Emit the message to all connected clients
-  io.emit("telegramMessage", { message: textToSay });
+  // Emit the message to all connected clients, preserving HTML
+  io.emit("telegramMessage", { message: textToSay, isHtml: true });
 
   // Send a confirmation message back to the Telegram chat
-  bot.sendMessage(chatId, `Message sent to all users: "${textToSay}"`);
+  bot.sendMessage(chatId, `Message sent to all users: "${textToSay}"`, {
+    parse_mode: "HTML",
+  });
 });
 
 // Function to load stickers from the text file
