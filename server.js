@@ -257,8 +257,6 @@ function checkInactiveRoomsAndWarn() {
   }
 }
 
-setInterval(checkInactiveRoomsAndWarn, 60000); // Check every minute
-
 io.on("connection", (socket) => {
   console.log(
     "A user connected with socket ID:",
@@ -1186,9 +1184,102 @@ bot.onText(/\/addstix (.+)/, (msg, match) => {
   }
 });
 
+// Admin join room command
+// Variable to store the current room for each admin
+const adminRooms = {};
+
+bot.onText(/\/joinroom (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const room = match[1].trim();
+
+  if (!room) {
+    bot.sendMessage(chatId, "Please provide a room name.");
+    return;
+  }
+
+  // Check if the room exists
+  if (!io.sockets.adapter.rooms.has(room)) {
+    bot.sendMessage(chatId, `Room "${room}" does not exist.`);
+    return;
+  }
+
+  // Store the room for this admin
+  adminRooms[chatId] = room;
+
+  // Notify clients in the room that an admin has joined
+  io.to(room).emit("adminJoined", { room });
+
+  bot.sendMessage(
+    chatId,
+    `Joined room "${room}". You can now send messages using /adminsay <message>`
+  );
+});
+
+// Admin send message command
+bot.onText(/\/adminsay (.+)/, (msg, match) => {
+  const chatId = msg.chat.id;
+  const message = match[1];
+  const room = adminRooms[chatId];
+
+  if (!room) {
+    bot.sendMessage(
+      chatId,
+      "You need to join a room first using /joinroom <room_name>"
+    );
+    return;
+  }
+
+  if (!message || message.trim() === "") {
+    bot.sendMessage(chatId, "Please provide a non-empty message.");
+    return;
+  }
+
+  // Send the admin message to the specific room
+  io.to(room).emit("adminMessage", {
+    username: "Admin",
+    messageText: message,
+    isAdmin: true,
+  });
+
+  bot.sendMessage(chatId, `Admin message sent to room ${room}: ${message}`);
+});
+
+bot.onText(/\/leaveroom/, (msg) => {
+  const chatId = msg.chat.id;
+  const room = adminRooms[chatId];
+
+  if (!room) {
+    bot.sendMessage(chatId, "You are not currently in any room.");
+    return;
+  }
+
+  // Notify clients in the room that the admin has left
+  io.to(room).emit("adminLeft", { room });
+
+  // Remove the room for this admin
+  delete adminRooms[chatId];
+
+  bot.sendMessage(chatId, `Left room "${room}".`);
+});
+
+bot.onText(/\/listrooms/, (msg) => {
+  const chatId = msg.chat.id;
+  const rooms = Array.from(io.sockets.adapter.rooms.keys()).filter((room) =>
+    room.startsWith("room-")
+  );
+
+  if (rooms.length === 0) {
+    bot.sendMessage(chatId, "There are no active rooms at the moment.");
+  } else {
+    const roomList = rooms.join("\n");
+    bot.sendMessage(chatId, `Active rooms:\n${roomList}`);
+  }
+});
+
 const PORT = process.env.PORT || 3002; // Default to 3000 if PORT is not set
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
 
+setInterval(checkInactiveRoomsAndWarn, 60000); // Check every minute
 setInterval(checkInactiveRooms, 60000); // Check every minute
