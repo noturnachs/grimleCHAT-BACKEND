@@ -229,8 +229,7 @@ function checkInactiveRooms() {
   }
 }
 
-const INACTIVITY_WARNING_TIMEOUT = 8 * 60 * 1000; // 8 minutes in milliseconds
-
+const INACTIVITY_WARNING_TIMEOUT = 3 * 60 * 1000; // 3 minutes in milliseconds
 function checkInactiveRoomsAndWarn() {
   const now = Date.now();
 
