@@ -341,6 +341,14 @@ io.on("connection", (socket) => {
       )}`
     );
 
+    for (let [socketId, user] of waitingQueue.entries()) {
+      if (user.socket.visitorId === visitorId) {
+        waitingQueue.delete(socketId);
+        console.log(`Removed duplicate entry for Visitor ID: ${visitorId}`);
+      }
+    }
+
+
     if (waitingQueue.has(socket.id)) {
       console.log(
         `User ${username} (Visitor ID: ${visitorId}) is already in the waiting queue`
