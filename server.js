@@ -348,7 +348,6 @@ io.on("connection", (socket) => {
       }
     }
 
-
     if (waitingQueue.has(socket.id)) {
       console.log(
         `User ${username} (Visitor ID: ${visitorId}) is already in the waiting queue`
@@ -613,6 +612,7 @@ function matchUsers(socket) {
         ? `Both of you like: ${interestMessage}`
         : null,
       partnerVisitorId: user2.socket.visitorId, // Include partner's visitorId
+      matchType: matchIndex !== -1 ? "interest" : "random",
     });
 
     user2.socket.emit("matchFound", {
@@ -622,6 +622,7 @@ function matchUsers(socket) {
         ? `Both of you like: ${interestMessage}`
         : null,
       partnerVisitorId: user1.socket.visitorId, // Include partner's visitorId
+      matchType: matchIndex !== -1 ? "interest" : "random",
     });
 
     console.log(
