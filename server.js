@@ -1016,7 +1016,7 @@ app.post("/api/report-user", upload.single("pdfReport"), (req, res) => {
   bot
     .sendMessage(process.env.TELEGRAM_CHAT_ID, message)
     .then(() => {
-      const pdfPath = pdfReport.path;
+      const pdfPath = path.join(diskPath, pdfReport.filename);
 
       bot
         .sendDocument(process.env.TELEGRAM_CHAT_ID, pdfPath, {
@@ -1047,8 +1047,9 @@ app.post("/api/report-user", upload.single("pdfReport"), (req, res) => {
     .catch((err) => {
       console.error("Error sending report to Telegram:", err);
       // Attempt to delete the file if the initial message fails
-      if (pdfReport && pdfReport.path) {
-        fs.unlink(pdfReport.path, () => {});
+      if (pdfReport && pdfReport.filename) {
+        const pdfPath = path.join(diskPath, pdfReport.filename);
+        fs.unlink(pdfPath, () => {});
       }
       res.status(500).json({ message: "Failed to send report to Telegram." });
     });
