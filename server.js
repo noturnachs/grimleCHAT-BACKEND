@@ -46,12 +46,17 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedMimeTypes = ["image/png", "image/jpeg", "image/jpg"];
+  const allowedMimeTypes = [
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "application/pdf",
+  ];
   if (allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true); // Accept the file
   } else {
     cb(
-      new Error("Invalid file type. Only PNG, JPG, and JPEG are allowed."),
+      new Error("Invalid file type. Only PNG, JPG, JPEG, and PDF are allowed."),
       false
     ); // Reject the file
   }
@@ -987,52 +992,64 @@ app.post("/api/reportbugs", upload.single("screenshot"), (req, res) => {
 });
 
 // Endpoint to handle user reports
-app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
+app.post("/api/report-user", upload.single("pdfReport"), (req, res) => {
   const { visitorId, reason } = req.body;
-  const screenshot = req.file; // This is where the uploaded screenshot will be available
+  const pdfReport = req.file;
+
+  console.log("Received report request:", { visitorId, reason });
+  console.log("PDF report file:", pdfReport);
 
   if (!visitorId || !reason) {
     return res.status(400).json({ message: "Missing required fields." });
   }
 
-  // If the screenshot was rejected by the file filter, multer won't attach the file to req.file
-  if (!screenshot) {
+  if (!pdfReport) {
     return res.status(400).json({
-      message: "Invalid file type. Only PNG, JPG, and JPEG are allowed.",
+      message: "PDF report is required.",
     });
   }
 
-  // Log the report information
   console.log(`Received report: ID: ${visitorId}, Reason: ${reason}`);
 
-  // Prepare the message for Telegram
   const message = `New Report:\nVisitor ID: ${visitorId}\nReason: ${reason}`;
 
-  // Send the report message to the Telegram bot
   bot
     .sendMessage(process.env.TELEGRAM_CHAT_ID, message)
     .then(() => {
-      // If there is a screenshot, send it to the Telegram bot
-      const screenshotBuffer = screenshot.buffer;
+      const pdfPath = pdfReport.path;
 
       bot
-        .sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshotBuffer, {
-          caption: `Screenshot for Visitor ID: ${visitorId}`,
+        .sendDocument(process.env.TELEGRAM_CHAT_ID, pdfPath, {
+          filename: `report_${visitorId}.pdf`,
+          caption: `PDF Report for Visitor ID: ${visitorId}`,
         })
         .then(() => {
+          // Delete the temporary PDF file
+          fs.unlink(pdfPath, (err) => {
+            if (err) {
+              console.error("Error deleting temporary PDF file:", err);
+            } else {
+              console.log("Temporary PDF file deleted successfully");
+            }
+          });
+
           res.status(200).json({
-            message: "Report received successfully with screenshot.",
+            message: "Report received successfully with PDF.",
           });
         })
         .catch((err) => {
-          console.error("Error sending screenshot to Telegram:", err);
-          res
-            .status(500)
-            .json({ message: "Failed to send screenshot to Telegram." });
+          console.error("Error sending PDF to Telegram:", err);
+          // Attempt to delete the file even if sending fails
+          fs.unlink(pdfPath, () => {});
+          res.status(500).json({ message: "Failed to send PDF to Telegram." });
         });
     })
     .catch((err) => {
       console.error("Error sending report to Telegram:", err);
+      // Attempt to delete the file if the initial message fails
+      if (pdfReport && pdfReport.path) {
+        fs.unlink(pdfReport.path, () => {});
+      }
       res.status(500).json({ message: "Failed to send report to Telegram." });
     });
 });
