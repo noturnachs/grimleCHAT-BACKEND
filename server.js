@@ -875,10 +875,17 @@ bot.onText(/\/banlist/, (msg) => {
           const reason = reasonPart || "No reason provided";
 
           return `${index + 1}. ${date} ${id} ${reason}`;
-        })
-        .join("\n");
+        });
 
-      bot.sendMessage(chatId, `Ban List:\n${formattedBanList}`);
+      // Join the formatted list into a single string
+      const fullMessage = `Ban List:\n${formattedBanList.join("\n")}`;
+
+      // Split the message into chunks of 4096 characters
+      const maxMessageLength = 4096;
+      for (let i = 0; i < fullMessage.length; i += maxMessageLength) {
+        const chunk = fullMessage.substring(i, i + maxMessageLength);
+        bot.sendMessage(chatId, chunk);
+      }
     }
   } catch (error) {
     console.error("Error reading the ban list file:", error);
