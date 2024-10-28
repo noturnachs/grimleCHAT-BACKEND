@@ -1216,6 +1216,48 @@ bot.onText(/\/addstix (.+)/, (msg, match) => {
 // Variable to store the current room for each admin
 const adminRooms = {};
 
+// Admin end room command
+bot.onText(/\/endroom/, (msg) => {
+  const chatId = msg.chat.id;
+  const room = adminRooms[chatId];
+
+  if (!room) {
+    bot.sendMessage(chatId, "You are not currently in any room.");
+    return;
+  }
+
+  // Get all sockets in the room
+  const sockets = io.sockets.adapter.rooms.get(room);
+  if (sockets) {
+    // Notify all users in the room that it's being closed by admin
+    io.to(room).emit("roomClosed", {
+      message: "This room has been closed by an administrator.",
+    });
+
+    // Disconnect all users from the room
+    for (const socketId of sockets) {
+      const socket = io.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.leave(room);
+      }
+    }
+  }
+
+  // Clear room messages
+  delete roomMessages[room];
+
+  // Remove the room from createdRooms
+  const roomIndex = createdRooms.indexOf(room);
+  if (roomIndex !== -1) {
+    createdRooms.splice(roomIndex, 1);
+  }
+
+  // Remove the room from adminRooms
+  delete adminRooms[chatId];
+
+  bot.sendMessage(chatId, `Room "${room}" has been closed.`);
+});
+
 bot.onText(/\/joinroom (.+)/, (msg, match) => {
   const chatId = msg.chat.id;
   const room = match[1].trim();
