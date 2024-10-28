@@ -89,6 +89,19 @@ console.log("CLIENT_ORIGIN:", process.env.CLIENT_ORIGIN);
 app.use(cors());
 app.use(express.json());
 
+// Add Helmet middleware for security headers
+const helmet = require("helmet");
+
+// Apply Helmet middleware with HSTS configuration
+app.use(helmet());
+app.use(
+  helmet.hsts({
+    maxAge: 31536000, // 1 year in seconds
+    includeSubDomains: true,
+    preload: true,
+  })
+);
+
 // Utility function to check if a user is banned
 const isUserBanned = (visitorId) => {
   if (!fs.existsSync(banFilePath)) {
