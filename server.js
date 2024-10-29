@@ -1433,6 +1433,58 @@ app.get("/api/user-effects", async (req, res) => {
   }
 });
 
+bot.onText(/\/clearbanned/, (msg) => {
+  const chatId = msg.chat.id;
+
+  try {
+    // Clear the ban file by writing an empty string to it
+    fs.writeFileSync(banFilePath, "");
+
+    bot.sendMessage(chatId, "All banned users have been cleared successfully.");
+    console.log("Ban list has been cleared.");
+  } catch (error) {
+    console.error("Error clearing ban list:", error);
+    bot.sendMessage(chatId, "An error occurred while clearing the ban list.");
+  }
+});
+
+const COMMANDS_LIST = `
+Available Commands:
+
+🔨 Moderation:
+/ban <visitorID> <reason> - Ban a user with optional reason
+/unban <visitorID> - Unban a user
+/banlist - Show list of banned users
+/clearbanned - Clear all banned users
+
+💬 Chat Management:
+/joinroom <roomName> - Join a specific chat room
+/leaveroom - Leave current room
+/listrooms - Show all active rooms
+/endroom - End/close current room
+/adminsay <message> - Send message as admin to current room
+
+📢 Announcements:
+/announce <message> - Set a new announcement
+/say <message> - Send a message to all users
+
+🎨 Customization:
+/addstix <url> - Add a new sticker URL
+
+❓ Help:
+/cmds or /help - Show this command list
+`;
+
+// Add these new command handlers
+bot.onText(/\/(cmds|help)/, (msg) => {
+  const chatId = msg.chat.id;
+
+  bot.sendMessage(chatId, COMMANDS_LIST, {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+});
+
 const PORT = process.env.PORT || 3002; // Default to 3000 if PORT is not set
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
