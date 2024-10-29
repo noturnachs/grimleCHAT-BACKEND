@@ -1451,36 +1451,36 @@ bot.onText(/\/clearbanned/, (msg) => {
 const COMMANDS_LIST = `
 Available Commands:
 
-🔨 Moderation:
-/ban <visitorID> <reason> - Ban a user with optional reason
-/unban <visitorID> - Unban a user
+🔨 *Moderation:*
+/ban [visitorID] [reason] - Ban a user with optional reason
+/unban [visitorID] - Unban a user
 /banlist - Show list of banned users
 /clearbanned - Clear all banned users
 
-💬 Chat Management:
-/joinroom <roomName> - Join a specific chat room
+💬 *Chat Management:*
+/joinroom [roomName] - Join a specific chat room
 /leaveroom - Leave current room
 /listrooms - Show all active rooms
 /endroom - End/close current room
-/adminsay <message> - Send message as admin to current room
+/adminsay [message] - Send message as admin to current room
 
-📢 Announcements:
-/announce <message> - Set a new announcement
-/say <message> - Send a message to all users
+📢 *Announcements:*
+/announce [message] - Set a new announcement
+/say [message] - Send a message to all users
 
-🎨 Customization:
-/addstix <url> - Add a new sticker URL
+🎨 *Customization:*
+/addstix [url] - Add a new sticker URL
 
-❓ Help:
+❓ *Help:*
 /cmds or /help - Show this command list
 `;
 
-// Add these new command handlers
+// Update the command handler to use Markdown
 bot.onText(/\/(cmds|help)/, (msg) => {
   const chatId = msg.chat.id;
 
   bot.sendMessage(chatId, COMMANDS_LIST, {
-    parse_mode: "HTML",
+    parse_mode: "Markdown",
     disable_web_page_preview: true,
   });
 });
