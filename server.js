@@ -1002,17 +1002,10 @@ app.post("/api/reportbugs", upload.single("screenshot"), (req, res) => {
 // Endpoint to handle user reports
 app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
   const { visitorId, reason } = req.body;
-  const screenshot = req.file; // This is where the uploaded screenshot will be available
+  const screenshot = req.file; // This might be undefined if no file was uploaded
 
   if (!visitorId || !reason) {
     return res.status(400).json({ message: "Missing required fields." });
-  }
-
-  // If the screenshot was rejected by the file filter, multer won't attach the file to req.file
-  if (!screenshot) {
-    return res.status(400).json({
-      message: "Invalid file type. Only PNG, JPG, and JPEG are allowed.",
-    });
   }
 
   // Log the report information
@@ -1026,23 +1019,27 @@ app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
     .sendMessage(process.env.TELEGRAM_CHAT_ID, message)
     .then(() => {
       // If there is a screenshot, send it to the Telegram bot
-      const screenshotBuffer = screenshot.buffer;
-
-      bot
-        .sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshotBuffer, {
-          caption: `Screenshot for Visitor ID: ${visitorId}`,
-        })
-        .then(() => {
-          res.status(200).json({
-            message: "Report received successfully with screenshot.",
+      if (screenshot) {
+        const screenshotBuffer = screenshot.buffer;
+        bot
+          .sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshotBuffer, {
+            caption: `Screenshot for Visitor ID: ${visitorId}`,
+          })
+          .then(() => {
+            res.status(200).json({
+              message: "Report received successfully with screenshot.",
+            });
+          })
+          .catch((err) => {
+            console.error("Error sending screenshot to Telegram:", err);
+            res.status(200).json({
+              message:
+                "Report received successfully, but screenshot failed to send.",
+            });
           });
-        })
-        .catch((err) => {
-          console.error("Error sending screenshot to Telegram:", err);
-          res
-            .status(500)
-            .json({ message: "Failed to send screenshot to Telegram." });
-        });
+      } else {
+        res.status(200).json({ message: "Report received successfully." });
+      }
     })
     .catch((err) => {
       console.error("Error sending report to Telegram:", err);
