@@ -9,6 +9,8 @@ const multer = require("multer");
 const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
 const TelegramBot = require("node-telegram-bot-api");
+const { Sequelize } = require("sequelize");
+const dbConfig = require("./database");
 
 const app = express();
 const server = http.createServer(app);
@@ -192,15 +194,6 @@ app.post("/api/unban-user", (req, res) => {
   res
     .status(200)
     .json({ message: `User with ID ${visitorId} has been unbanned.` });
-});
-// Admin password validation endpoint
-app.post("/validate-admin", (req, res) => {
-  const { password } = req.body;
-  if (password === process.env.ADMIN_PASSWORD) {
-    res.json({ success: true });
-  } else {
-    res.json({ success: false });
-  }
 });
 
 function areSimilar(str1, str2) {
@@ -1343,6 +1336,100 @@ bot.onText(/\/listrooms/, (msg) => {
   } else {
     const roomList = rooms.join("\n");
     bot.sendMessage(chatId, `Active rooms:\n${roomList}`);
+  }
+});
+
+// Initialize Sequelize with your config (add this after your other const declarations)
+const env = process.env.NODE_ENV || "development";
+const sequelize = new Sequelize(dbConfig[env].url, {
+  dialect: "postgres",
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false,
+    },
+  },
+  logging: false, // Set to console.log to see SQL queries
+});
+
+(async () => {
+  try {
+    await sequelize.authenticate();
+    console.log("Database connection has been established successfully.");
+  } catch (error) {
+    console.error("Unable to connect to the database:", error);
+  }
+})();
+
+// Add this with your other endpoints
+// Replace the existing validate-special-username endpoint
+app.post("/api/validate-special-username", async (req, res) => {
+  const { username, token } = req.body;
+
+  try {
+    const [results] = await sequelize.query(
+      "SELECT username, style_effect FROM user_effects WHERE username = :username AND token = :token",
+      {
+        replacements: { username: username.toLowerCase(), token },
+        type: Sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    if (!results) {
+      // Check if it's a special username without correct token
+      const [specialUsername] = await sequelize.query(
+        "SELECT username FROM user_effects WHERE username = :username",
+        {
+          replacements: { username: username.toLowerCase() },
+          type: Sequelize.QueryTypes.SELECT,
+        }
+      );
+
+      if (specialUsername) {
+        return res.json({
+          success: false,
+          message: "Invalid token for this special username.",
+        });
+      }
+
+      // Not a special username at all
+      return res.json({ success: true });
+    }
+
+    // Valid special username with correct token
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error validating username.",
+    });
+  }
+});
+
+// Add a new endpoint to get user effects
+app.get("/api/user-effects", async (req, res) => {
+  try {
+    const results = await sequelize.query(
+      "SELECT username, style_effect FROM user_effects",
+      {
+        type: Sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    const effectsMap = results.reduce((acc, effect) => {
+      acc[effect.username] = effect.style_effect;
+      return acc;
+    }, {});
+
+    res.json({
+      styles: {
+        usernames: effectsMap,
+      },
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ message: "Error fetching user effects." });
   }
 });
 
