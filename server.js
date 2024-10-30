@@ -278,6 +278,49 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("messageReaction", ({ room, messageId, reaction, username }) => {
+    // Get or initialize room messages array
+    if (!roomMessages[room]) {
+      roomMessages[room] = [];
+    }
+
+    const messages = roomMessages[room];
+    const messageIndex = messages.findIndex((msg) => msg.id === messageId);
+
+    if (messageIndex !== -1) {
+      // Initialize reactions if they don't exist
+      if (!messages[messageIndex].reactions) {
+        messages[messageIndex].reactions = {};
+      }
+
+      // Initialize reaction array if it doesn't exist
+      if (!messages[messageIndex].reactions[reaction]) {
+        messages[messageIndex].reactions[reaction] = [];
+      }
+
+      const users = messages[messageIndex].reactions[reaction];
+
+      // Toggle user's reaction
+      const userIndex = users.indexOf(username);
+      if (userIndex === -1) {
+        users.push(username);
+      } else {
+        users.splice(userIndex, 1);
+      }
+
+      // Remove reaction if no users
+      if (users.length === 0) {
+        delete messages[messageIndex].reactions[reaction];
+      }
+
+      // Emit updated message to all users in room
+      io.to(room).emit("messageReactionUpdate", {
+        messageId,
+        reactions: messages[messageIndex].reactions,
+      });
+    }
+  });
+
   socket.on("rejoinRoom", ({ room, username, visitorId }) => {
     socket.join(room);
     socket.to(room).emit("userRejoined", { username, visitorId });
@@ -425,33 +468,48 @@ io.on("connection", (socket) => {
 
   socket.on("sendMessage", ({ room, message }) => {
     updateRoomActivity(room);
-    const visitorId = socket.visitorId; // Retrieve the visitorId from the socket object
+    const visitorId = socket.visitorId;
+    const timestamp = message.timestamp || Date.now();
 
     // Store the message in the roomMessages object
     if (!roomMessages[room]) {
       roomMessages[room] = []; // Initialize the array if it doesn't exist
     }
 
-    // Generate timestamp if not provided
-    const timestamp = message.timestamp || Date.now();
+    // Create the message object with all necessary properties
+    const messageWithMetadata = {
+      ...message,
+      id:
+        message.id ||
+        `msg_${timestamp}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp,
+      visitorId,
+      reactions: {}, // Initialize empty reactions object
+    };
 
-    // Check if the message contains text and is not empty
-    if (
+    // Push message to room messages only once
+    roomMessages[room].push(messageWithMetadata);
+
+    // Emit the appropriate message based on type
+    if (message.gif) {
+      io.to(room).emit("message", {
+        ...messageWithMetadata,
+        username: message.username,
+        gif: message.gif,
+      });
+    } else if (message.audio) {
+      sendVoiceMessageToTelegram(message.audio, visitorId);
+      io.to(room).emit("message", {
+        ...messageWithMetadata,
+        username: message.username,
+        audio: message.audio,
+      });
+    } else if (
       message.messageText &&
       typeof message.messageText === "string" &&
       message.messageText.trim() !== ""
     ) {
-      const messageWithTimestamp = {
-        ...message,
-        timestamp: timestamp,
-      };
-      io.emit("chat message", messageWithTimestamp);
-      roomMessages[room].push({
-        username: message.username,
-        messageText: message.messageText,
-        visitorId: visitorId,
-        timestamp: new Date(timestamp).toISOString(),
-      });
+      io.to(room).emit("message", messageWithMetadata);
       console.log(
         `Message from ${
           message.username
@@ -459,46 +517,15 @@ io.on("connection", (socket) => {
           timestamp
         ).toISOString()}: ${message.messageText}`
       );
+    } else {
+      io.to(room).emit("message", messageWithMetadata);
     }
 
-    // Check if the message contains images
+    // Handle images if present
     if (message.images) {
-      // Send the images to Telegram
       message.images.forEach((image) => {
         sendImageToTelegram(image, visitorId);
       });
-    }
-
-    // Check if the message contains a GIF
-    if (message.gif) {
-      console.log(
-        `Received GIF message from ${
-          message.username
-        } (Visitor ID: ${visitorId}) in room ${room} at ${new Date(
-          timestamp
-        ).toISOString()}`
-      );
-      io.to(room).emit("message", {
-        username: message.username,
-        gif: message.gif,
-        timestamp: timestamp,
-      });
-    } else if (message.audio) {
-      sendVoiceMessageToTelegram(message.audio, visitorId);
-      console.log(
-        `Received audio message from ${
-          message.username
-        } (Visitor ID: ${visitorId}) in room ${room} at ${new Date(
-          timestamp
-        ).toISOString()}`
-      );
-      io.to(room).emit("message", {
-        username: message.username,
-        audio: message.audio,
-        timestamp: timestamp,
-      });
-    } else {
-      io.to(room).emit("message", { ...message, timestamp: timestamp });
     }
   });
 
