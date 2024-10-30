@@ -283,6 +283,15 @@ io.on("connection", (socket) => {
     socket.to(room).emit("userRejoined", { username, visitorId });
   });
 
+  socket.on("unsendMessage", ({ room, messageId }) => {
+    console.log(`Attempting to unsend message ${messageId} in room ${room}`);
+
+    // Emit to all clients in the room that the message was unsent
+    io.to(room).emit("messageUnsent", {
+      messageId: messageId,
+    });
+  });
+
   // Add this new event listener for reconnection
   socket.on("userReconnected", ({ username, visitorId, room }) => {
     console.log(
