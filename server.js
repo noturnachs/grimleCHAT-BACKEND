@@ -433,7 +433,7 @@ io.on("connection", (socket) => {
 
     setTimeout(() => {
       matchUsers(socket);
-    }, 5000); // Start matching after 5 seconds
+    }, 2000); // Start matching after 5 seconds
   });
 
   // Endpoint to get messages from a specific room and all available rooms
