@@ -1529,6 +1529,37 @@ bot.onText(/\/(cmds|help)/, (msg) => {
   });
 });
 
+// Add this endpoint near your other API endpoints
+app.get("/api/banned-users", (req, res) => {
+  try {
+    const banList = fs.readFileSync(banFilePath, "utf-8");
+
+    if (banList.trim().length === 0) {
+      return res.json([]);
+    }
+
+    const bannedUsers = banList
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => {
+        const [datePart, idPart] = line.split(" - ID: ");
+        const [id, reasonPart] = idPart.split(", Reason: ");
+
+        return {
+          id: id,
+          bannedAt: new Date(datePart).toISOString(),
+          banReason: reasonPart || "No reason provided",
+          username: `User ${id.slice(0, 6)}...`, // Create a shortened version of the ID as username
+        };
+      });
+
+    res.json(bannedUsers);
+  } catch (error) {
+    console.error("Error reading ban list:", error);
+    res.status(500).json({ error: "Failed to fetch banned users" });
+  }
+});
+
 const PORT = process.env.PORT || 3002; // Default to 3000 if PORT is not set
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
