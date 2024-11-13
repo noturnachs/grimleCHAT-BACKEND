@@ -329,6 +329,17 @@ io.on("connection", (socket) => {
   socket.on("unsendMessage", ({ room, messageId }) => {
     console.log(`Attempting to unsend message ${messageId} in room ${room}`);
 
+    // Find and update the message in roomMessages if it exists
+    if (roomMessages[room]) {
+      const messageIndex = roomMessages[room].findIndex(
+        (msg) => msg.id === messageId
+      );
+      if (messageIndex !== -1) {
+        // Clear the reactions for this message
+        roomMessages[room][messageIndex].reactions = {};
+      }
+    }
+
     // Emit to all clients in the room that the message was unsent
     io.to(room).emit("messageUnsent", {
       messageId: messageId,
