@@ -278,6 +278,14 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Add this with your other socket event handlers
+  socket.on("requestUserCount", () => {
+    // Calculate current user count
+    const currentCount = io.sockets.sockets.size;
+    // Send the count back to the requesting client
+    socket.emit("userCountUpdate", currentCount);
+  });
+
   socket.on("messageReaction", ({ room, messageId, reaction, username }) => {
     // Get or initialize room messages array
     if (!roomMessages[room]) {
