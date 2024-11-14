@@ -1046,31 +1046,44 @@ app.post("/api/reportbugs", upload.single("screenshot"), (req, res) => {
   }
 });
 
+function findUsernameByVisitorId(visitorId) {
+  for (const [_, socket] of io.sockets.sockets) {
+    if (socket.visitorId === visitorId) {
+      return socket.username || "Unknown User";
+    }
+  }
+  return "Unknown User";
+}
+
 // Endpoint to handle user reports
 app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
   const { visitorId, reason } = req.body;
-  const screenshot = req.file; // This might be undefined if no file was uploaded
+  const screenshot = req.file;
 
   if (!visitorId || !reason) {
     return res.status(400).json({ message: "Missing required fields." });
   }
 
-  // Log the report information
-  console.log(`Received report: ID: ${visitorId}, Reason: ${reason}`);
+  // Get the username of the reported user
+  const reportedUsername = findUsernameByVisitorId(visitorId);
 
-  // Prepare the message for Telegram
-  const message = `New Report:\nVisitor ID: ${visitorId}\nReason: ${reason}`;
+  // Log the report information with username
+  console.log(
+    `Received report: ID: ${visitorId}, Username: ${reportedUsername}, Reason: ${reason}`
+  );
+
+  // Prepare the message for Telegram with username
+  const message = `New Report:\nVisitor ID: ${visitorId}\nUsername: ${reportedUsername}\nReason: ${reason}`;
 
   // Send the report message to the Telegram bot
   bot
     .sendMessage(process.env.TELEGRAM_CHAT_ID, message)
     .then(() => {
-      // If there is a screenshot, send it to the Telegram bot
       if (screenshot) {
         const screenshotBuffer = screenshot.buffer;
         bot
           .sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshotBuffer, {
-            caption: `Screenshot for Visitor ID: ${visitorId}`,
+            caption: `Screenshot for User: ${reportedUsername} (Visitor ID: ${visitorId})`,
           })
           .then(() => {
             res.status(200).json({
