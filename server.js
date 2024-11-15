@@ -14,6 +14,7 @@ const dbConfig = require("./database");
 
 const app = express();
 const server = http.createServer(app);
+
 const io = socketIO(server, {
   cors: {
     origin: [process.env.CLIENT_ORIGIN, "https://lcccc.onrender.com"],
@@ -771,6 +772,160 @@ function handleLeaveQueue(socket, username) {
 
 app.get("/announcement", (req, res) => {
   res.json({ announcement });
+});
+
+// Submit vote
+// Submit vote
+app.post("/api/vote", async (req, res) => {
+  const { visitorId, choice, isChange } = req.body;
+
+  try {
+    await sequelize.transaction(async (t) => {
+      if (isChange) {
+        // Get the user's current vote
+        const [currentVote] = await sequelize.query(
+          "SELECT choice FROM public.video_votes WHERE visitor_id = :visitorId",
+          {
+            replacements: { visitorId },
+            type: Sequelize.QueryTypes.SELECT,
+            transaction: t,
+          }
+        );
+
+        if (currentVote) {
+          // Get current counts before updating
+          const [currentCounts] = await sequelize.query(
+            "SELECT yes_count, no_count FROM public.vote_counts WHERE id = 1",
+            {
+              type: Sequelize.QueryTypes.SELECT,
+              transaction: t,
+            }
+          );
+
+          // Only decrease if count is greater than 0
+          if (currentCounts[`${currentVote.choice}_count`] > 0) {
+            await sequelize.query(
+              `UPDATE public.vote_counts 
+               SET ${currentVote.choice}_count = ${currentVote.choice}_count - 1 
+               WHERE id = 1`,
+              {
+                type: Sequelize.QueryTypes.UPDATE,
+                transaction: t,
+              }
+            );
+          }
+
+          // Update user's vote
+          await sequelize.query(
+            `UPDATE public.video_votes 
+             SET choice = :choice 
+             WHERE visitor_id = :visitorId`,
+            {
+              replacements: { visitorId, choice },
+              type: Sequelize.QueryTypes.UPDATE,
+              transaction: t,
+            }
+          );
+        } else {
+          // If no current vote found, insert new vote
+          await sequelize.query(
+            `INSERT INTO public.video_votes (visitor_id, choice) 
+             VALUES (:visitorId, :choice)`,
+            {
+              replacements: { visitorId, choice },
+              type: Sequelize.QueryTypes.INSERT,
+              transaction: t,
+            }
+          );
+        }
+      } else {
+        // Insert new vote
+        await sequelize.query(
+          `INSERT INTO public.video_votes (visitor_id, choice) 
+           VALUES (:visitorId, :choice)`,
+          {
+            replacements: { visitorId, choice },
+            type: Sequelize.QueryTypes.INSERT,
+            transaction: t,
+          }
+        );
+      }
+
+      // Increment the new choice count
+      await sequelize.query(
+        `UPDATE public.vote_counts 
+         SET ${choice}_count = ${choice}_count + 1 
+         WHERE id = 1`,
+        {
+          type: Sequelize.QueryTypes.UPDATE,
+          transaction: t,
+        }
+      );
+    });
+
+    // Get final counts
+    const [voteCounts] = await sequelize.query(
+      "SELECT yes_count, no_count FROM public.vote_counts WHERE id = 1",
+      {
+        type: Sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    // Emit update to all clients
+    io.emit("voteUpdate", {
+      yes: voteCounts.yes_count,
+      no: voteCounts.no_count,
+    });
+
+    res.json({
+      success: true,
+      votes: {
+        yes: voteCounts.yes_count,
+        no: voteCounts.no_count,
+      },
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    if (error.name === "SequelizeUniqueConstraintError") {
+      res.status(400).json({ error: "You have already voted" });
+    } else {
+      res.status(500).json({ error: "Error submitting vote" });
+    }
+  }
+});
+
+// Update the check-vote endpoint to include the user's current vote
+app.post("/api/check-vote", async (req, res) => {
+  const { visitorId } = req.body;
+
+  try {
+    const [userVote] = await sequelize.query(
+      "SELECT choice FROM public.video_votes WHERE visitor_id = :visitorId",
+      {
+        replacements: { visitorId },
+        type: Sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    const [voteCounts] = await sequelize.query(
+      "SELECT yes_count, no_count FROM public.vote_counts WHERE id = 1",
+      {
+        type: Sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    res.json({
+      hasVoted: !!userVote,
+      currentVote: userVote?.choice || null,
+      votes: {
+        yes: voteCounts.yes_count,
+        no: voteCounts.no_count,
+      },
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    res.status(500).json({ error: "Error checking vote status" });
+  }
 });
 
 // Update the announcement endpoint
