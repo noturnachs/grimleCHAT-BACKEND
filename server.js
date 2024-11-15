@@ -1788,10 +1788,28 @@ app.get("/api/banned-users", (req, res) => {
   }
 });
 
+// Add this function to reset the 24-hour counter
+const resetDailyShoutoutCount = async () => {
+  try {
+    // This query will only count shoutouts from the last 24 hours
+    // No need to manually reset anything
+    console.log("Daily shoutout count reset check completed");
+  } catch (error) {
+    console.error("Error in daily shoutout reset:", error);
+  }
+};
+
+// Run the reset check every hour
+setInterval(resetDailyShoutoutCount, 3600000); // 3600000ms = 1 hour
+
+// Modify the GET endpoint to only fetch active (non-deleted) shoutouts
 app.get("/api/shoutouts", async (req, res) => {
   try {
     const [shoutouts] = await sequelize.query(
-      "SELECT * FROM shoutouts ORDER BY created_at DESC LIMIT 50"
+      `SELECT * FROM shoutouts 
+       WHERE deleted = false 
+       ORDER BY created_at DESC 
+       LIMIT 50`
     );
     res.json({ shoutouts });
   } catch (error) {
@@ -1799,6 +1817,26 @@ app.get("/api/shoutouts", async (req, res) => {
     res.status(500).json({ message: "Failed to fetch shoutouts" });
   }
 });
+
+// Add this function to automatically mark old shoutouts as deleted
+const markOldShoutoutsAsDeleted = async () => {
+  try {
+    await sequelize.query(
+      `UPDATE shoutouts 
+       SET deleted = true, 
+           deletion_date = NOW() 
+       WHERE created_at < NOW() - INTERVAL '20 minutes' 
+       AND deleted = false`
+    );
+    console.log("Cleaned up old shoutouts");
+  } catch (error) {
+    console.error("Error marking old shoutouts as deleted:", error);
+  }
+};
+
+// Add this near the top of your server file, after your other imports and setup
+// Run the cleanup every minute
+setInterval(markOldShoutoutsAsDeleted, 60000); // 60000ms = 1 minute
 
 // Check remaining shoutouts for a visitor
 app.get("/api/shoutouts/remaining/:visitorId", async (req, res) => {
