@@ -671,33 +671,33 @@ function matchUsers(socket) {
     user1.socket.join(room);
     user2.socket.join(room);
 
-    const interestMessage = user1.interest
-      .filter((user1Interest) =>
-        user2.interest.some((user2Interest) =>
-          areSimilar(user1Interest, user2Interest)
-        )
-      )
-      .map((interest) => `<strong>${interest}</strong>`)
-      .join(", ");
+    const interestMessage =
+      user1.interest[0] === "No interest provided" ||
+      user2.interest[0] === "No interest provided"
+        ? null
+        : user1.interest
+            .filter((user1Interest) =>
+              user2.interest.some((user2Interest) =>
+                areSimilar(user1Interest, user2Interest)
+              )
+            )
+            .map((interest) => `<strong>${interest}</strong>`)
+            .join(", ");
 
     // Emit matchFound event to both users, including their respective visitorIds
     user1.socket.emit("matchFound", {
       room,
       username: user2.username,
-      interest: interestMessage.length
-        ? `Both of you like: ${interestMessage}`
-        : null,
-      partnerVisitorId: user2.socket.visitorId, // Include partner's visitorId
+      interest: interestMessage ? `Both of you like: ${interestMessage}` : null,
+      partnerVisitorId: user2.socket.visitorId,
       matchType: matchIndex !== -1 ? "interest" : "random",
     });
 
     user2.socket.emit("matchFound", {
       room,
       username: user1.username,
-      interest: interestMessage.length
-        ? `Both of you like: ${interestMessage}`
-        : null,
-      partnerVisitorId: user1.socket.visitorId, // Include partner's visitorId
+      interest: interestMessage ? `Both of you like: ${interestMessage}` : null,
+      partnerVisitorId: user1.socket.visitorId,
       matchType: matchIndex !== -1 ? "interest" : "random",
     });
 
