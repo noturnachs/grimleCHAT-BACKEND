@@ -103,6 +103,7 @@ app.use(
     preload: true,
   })
 );
+const roomChatLogs = new Map(); // Store chat logs for each room
 
 // Utility function to check if a user is banned
 const isUserBanned = (visitorId) => {
@@ -509,6 +510,19 @@ io.on("connection", (socket) => {
     // Push message to room messages only once
     roomMessages[room].push(messageWithMetadata);
 
+    if (!roomChatLogs.has(room)) {
+      roomChatLogs.set(room, []);
+    }
+    roomChatLogs.get(room).push({
+      timestamp: new Date().toISOString(),
+      username: message.username,
+      messageText: message.messageText || "",
+      gif: message.gif || null,
+      sticker: message.sticker || null,
+      images: message.images || null,
+      audio: message.audio || null,
+    });
+
     // Emit the appropriate message based on type
     if (message.gif) {
       io.to(room).emit("message", {
@@ -727,6 +741,7 @@ function handleLeaveRoom(socket) {
 
     // Clear room messages
     delete roomMessages[room];
+    roomChatLogs.delete(room);
 
     // Remove the room from createdRooms
     const roomIndex = createdRooms.indexOf(room);
@@ -1063,56 +1078,68 @@ function findUsernameByVisitorId(visitorId) {
   return "Unknown User";
 }
 
-// Endpoint to handle user reports
-app.post("/api/report-user", upload.single("screenshot"), (req, res) => {
-  const { visitorId, reason } = req.body;
+app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
+  const { visitorId, reason, room } = req.body;
   const screenshot = req.file;
 
   if (!visitorId || !reason) {
     return res.status(400).json({ message: "Missing required fields." });
   }
 
-  // Get the username of the reported user
   const reportedUsername = findUsernameByVisitorId(visitorId);
-
-  // Log the report information with username
   console.log(
     `Received report: ID: ${visitorId}, Username: ${reportedUsername}, Reason: ${reason}`
   );
 
-  // Prepare the message for Telegram with username
-  const message = `New Report:\nVisitor ID: ${visitorId}\nUsername: ${reportedUsername}\nReason: ${reason}`;
+  try {
+    // Send initial report message
+    await bot.sendMessage(
+      process.env.TELEGRAM_CHAT_ID,
+      `New Report:\nVisitor ID: ${visitorId}\nUsername: ${reportedUsername}\nReason: ${reason}`
+    );
 
-  // Send the report message to the Telegram bot
-  bot
-    .sendMessage(process.env.TELEGRAM_CHAT_ID, message)
-    .then(() => {
-      if (screenshot) {
-        const screenshotBuffer = screenshot.buffer;
-        bot
-          .sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshotBuffer, {
-            caption: `Screenshot for User: ${reportedUsername} (Visitor ID: ${visitorId})`,
-          })
-          .then(() => {
-            res.status(200).json({
-              message: "Report received successfully with screenshot.",
-            });
-          })
-          .catch((err) => {
-            console.error("Error sending screenshot to Telegram:", err);
-            res.status(200).json({
-              message:
-                "Report received successfully, but screenshot failed to send.",
-            });
-          });
-      } else {
-        res.status(200).json({ message: "Report received successfully." });
-      }
-    })
-    .catch((err) => {
-      console.error("Error sending report to Telegram:", err);
-      res.status(500).json({ message: "Failed to send report to Telegram." });
-    });
+    // Generate and send chat log if available
+    if (room && roomChatLogs.has(room)) {
+      const chatLog = roomChatLogs.get(room);
+      const logContent = chatLog
+        .map(
+          (msg) =>
+            `[${msg.timestamp}] ${msg.username}: ${
+              msg.messageText ||
+              (msg.gif && "[GIF]") ||
+              (msg.sticker && "[STICKER]") ||
+              (msg.images && "[IMAGE]") ||
+              (msg.audio && "[AUDIO]") ||
+              "[EMPTY MESSAGE]"
+            }`
+        )
+        .join("\n");
+
+      // Create a temporary file for the chat log
+      const tempFilePath = path.join(diskPath, `${room}_chatlog.txt`);
+      fs.writeFileSync(tempFilePath, logContent, "utf8");
+
+      // Send the file
+      await bot.sendDocument(process.env.TELEGRAM_CHAT_ID, tempFilePath, {
+        caption: `Chat log for reported user: ${reportedUsername}`,
+      });
+
+      // Clean up the temporary file
+      fs.unlinkSync(tempFilePath);
+    }
+
+    // Send screenshot if available
+    if (screenshot) {
+      await bot.sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshot.buffer, {
+        caption: `Screenshot for User: ${reportedUsername} (Visitor ID: ${visitorId})`,
+      });
+    }
+
+    res.status(200).json({ message: "Report received successfully." });
+  } catch (err) {
+    console.error("Error sending report to Telegram:", err);
+    res.status(500).json({ message: "Failed to send report to Telegram." });
+  }
 });
 
 // Helper function to parse custom color tags
