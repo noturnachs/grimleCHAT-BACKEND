@@ -1788,6 +1788,81 @@ app.get("/api/banned-users", (req, res) => {
   }
 });
 
+app.get("/api/shoutouts", async (req, res) => {
+  try {
+    const [shoutouts] = await sequelize.query(
+      "SELECT * FROM shoutouts ORDER BY created_at DESC LIMIT 50"
+    );
+    res.json({ shoutouts });
+  } catch (error) {
+    console.error("Error fetching shoutouts:", error);
+    res.status(500).json({ message: "Failed to fetch shoutouts" });
+  }
+});
+
+// Check remaining shoutouts for a visitor
+app.get("/api/shoutouts/remaining/:visitorId", async (req, res) => {
+  try {
+    const { visitorId } = req.params;
+    const [results] = await sequelize.query(
+      `SELECT COUNT(*) as count 
+       FROM shoutouts 
+       WHERE visitor_id = :visitorId 
+       AND created_at > NOW() - INTERVAL '24 hours'`,
+      {
+        replacements: { visitorId },
+      }
+    );
+
+    const count = parseInt(results[0].count);
+    const remaining = Math.max(0, 5 - count);
+
+    res.json({ remaining });
+  } catch (error) {
+    console.error("Error checking remaining shoutouts:", error);
+    res.status(500).json({ message: "Failed to check remaining shoutouts" });
+  }
+});
+
+// Post a new shoutout
+app.post("/api/shoutouts", async (req, res) => {
+  try {
+    const { message, visitorId } = req.body;
+
+    // Check remaining shoutouts
+    const [results] = await sequelize.query(
+      `SELECT COUNT(*) as count 
+       FROM shoutouts 
+       WHERE visitor_id = :visitorId 
+       AND created_at > NOW() - INTERVAL '24 hours'`,
+      {
+        replacements: { visitorId },
+      }
+    );
+
+    const count = parseInt(results[0].count);
+    if (count >= 5) {
+      return res
+        .status(429)
+        .json({ message: "Shoutout limit reached for today" });
+    }
+
+    // Insert new shoutout
+    await sequelize.query(
+      `INSERT INTO shoutouts (visitor_id, message) 
+       VALUES (:visitorId, :message)`,
+      {
+        replacements: { visitorId, message },
+      }
+    );
+
+    res.status(201).json({ message: "Shoutout posted successfully" });
+  } catch (error) {
+    console.error("Error posting shoutout:", error);
+    res.status(500).json({ message: "Failed to post shoutout" });
+  }
+});
+
 const PORT = process.env.PORT || 3002; // Default to 3000 if PORT is not set
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
