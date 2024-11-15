@@ -1455,6 +1455,7 @@ const sequelize = new Sequelize(dbConfig[env].url, {
 
 // Add this with your other endpoints
 // Replace the existing validate-special-username endpoint
+// Modify the existing endpoint to check if username exists in user_effects
 app.post("/api/validate-special-username", async (req, res) => {
   const { username, token } = req.body;
 
@@ -1481,21 +1482,45 @@ app.post("/api/validate-special-username", async (req, res) => {
         return res.json({
           success: false,
           message: "Invalid token for this special username.",
+          isVerified: true, // Add this to indicate the username is special
         });
       }
 
       // Not a special username at all
-      return res.json({ success: true });
+      return res.json({
+        success: true,
+        isVerified: false,
+      });
     }
 
     // Valid special username with correct token
-    res.json({ success: true });
+    res.json({
+      success: true,
+      isVerified: true,
+      style: results.style_effect,
+    });
   } catch (error) {
     console.error("Database error:", error);
     res.status(500).json({
       success: false,
       message: "Error validating username.",
+      isVerified: false,
     });
+  }
+});
+
+// Add a new endpoint to get all verified usernames
+app.get("/api/verified-users", async (req, res) => {
+  try {
+    const results = await sequelize.query("SELECT username FROM user_effects", {
+      type: Sequelize.QueryTypes.SELECT,
+    });
+
+    const verifiedUsers = results.map((result) => result.username);
+    res.json({ verifiedUsers });
+  } catch (error) {
+    console.error("Error fetching verified users:", error);
+    res.status(500).json({ error: "Failed to fetch verified users" });
   }
 });
 
