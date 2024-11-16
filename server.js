@@ -1365,16 +1365,12 @@ bot.onText(/\/say (.+)/, (msg, match) => {
 
 // Add this new endpoint for admin broadcasts
 app.post("/api/admin/broadcast", (req, res) => {
-  const { message, color } = req.body;
-
-  // Format the message the same way as the /say command
-  const formattedMessage = `<${color}>${message}</${color}>`;
-  const clientFormatted = parseColorTagsForClient(formattedMessage);
+  const { message } = req.body;
 
   // Emit to all clients using the same telegramMessage event
   io.emit("telegramMessage", {
-    message: clientFormatted,
-    isHtml: true,
+    message: message,
+    isHtml: false,
   });
 
   res.json({ success: true, message: "Message broadcast successfully" });
