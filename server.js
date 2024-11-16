@@ -105,6 +105,27 @@ app.use(
   })
 );
 const roomChatLogs = new Map(); // Store chat logs for each room
+let peakUserCount = 0;
+
+app.get("/api/stats", (req, res) => {
+  try {
+    // Update peak user count if current count is higher
+    if (userCount > peakUserCount) {
+      peakUserCount = userCount;
+    }
+
+    const stats = {
+      activeUsers: userCount,
+      peakUsers: peakUserCount,
+      activeRooms: createdRooms.length,
+    };
+
+    res.json(stats);
+  } catch (error) {
+    console.error("Error fetching system stats:", error);
+    res.status(500).json({ message: "Failed to fetch system stats" });
+  }
+});
 
 // Utility function to check if a user is banned
 const isUserBanned = (visitorId) => {
