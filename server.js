@@ -1758,6 +1758,59 @@ app.get("/api/verified-users", async (req, res) => {
   }
 });
 
+// Add user effect
+app.post("/api/admin/user-effects/add", async (req, res) => {
+  const { username, token, effect } = req.body;
+  try {
+    await sequelize.query(
+      `INSERT INTO user_effects (username, token, style_effect) 
+       VALUES (:username, :token, :effect)
+       ON CONFLICT (username) 
+       DO UPDATE SET token = :token, style_effect = :effect`,
+      {
+        replacements: { username, token, effect },
+      }
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Edit user effect
+app.put("/api/admin/user-effects/edit", async (req, res) => {
+  const { username, effect } = req.body;
+  try {
+    await sequelize.query(
+      `UPDATE user_effects 
+       SET style_effect = :effect 
+       WHERE username = :username`,
+      {
+        replacements: { username, effect },
+      }
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete user effect
+app.delete("/api/admin/user-effects/delete", async (req, res) => {
+  const { username } = req.body;
+  try {
+    await sequelize.query(
+      `DELETE FROM user_effects WHERE username = :username`,
+      {
+        replacements: { username },
+      }
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Add a new endpoint to get user effects
 app.get("/api/user-effects", async (req, res) => {
   try {
