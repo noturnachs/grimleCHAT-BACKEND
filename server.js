@@ -1269,13 +1269,18 @@ app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
   const reportedUsername = findUsernameByVisitorId(visitorId);
 
   try {
-    // Store report in database
-    const [report] = await sequelize.query(
-      `INSERT INTO user_reports (visitor_id, reported_username, reason, room)
-       VALUES (:visitorId, :reportedUsername, :reason, :room)
-       RETURNING id`,
+    // Store report in database and get the inserted ID
+    const [[report]] = await sequelize.query(
+      `INSERT INTO user_reports (visitor_id, reported_username, reason, room, status)
+       VALUES (:visitorId, :reportedUsername, :reason, :room, 'pending')
+       RETURNING id, visitor_id, reported_username, reason, room, status`,
       {
-        replacements: { visitorId, reportedUsername, reason, room },
+        replacements: {
+          visitorId,
+          reportedUsername,
+          reason,
+          room,
+        },
         type: Sequelize.QueryTypes.INSERT,
       }
     );
@@ -1300,31 +1305,25 @@ app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
 
       // Update report with chat log
       await sequelize.query(
-        `UPDATE user_reports SET chat_log = :chatLog WHERE id = :reportId`,
+        `UPDATE user_reports 
+         SET chat_log = :chatLog 
+         WHERE id = :reportId`,
         {
-          replacements: { chatLog: chatLogContent, reportId: report.id },
+          replacements: {
+            chatLog: chatLogContent,
+            reportId: report.id,
+          },
           type: Sequelize.QueryTypes.UPDATE,
         }
       );
-
-      // Create temporary file for Telegram
-      const tempFilePath = path.join(diskPath, `${room}_chatlog.txt`);
-      fs.writeFileSync(tempFilePath, chatLogContent, "utf8");
-
-      // Send chat log to Telegram
-      await bot.sendDocument(process.env.TELEGRAM_CHAT_ID, tempFilePath, {
-        caption: `Chat log for reported user: ${reportedUsername}`,
-      });
-
-      // Clean up temporary file
-      fs.unlinkSync(tempFilePath);
     }
 
-    // Handle screenshot
+    // Handle screenshot if available
     if (screenshot) {
-      // Store screenshot URL in database
       await sequelize.query(
-        `UPDATE user_reports SET screenshot_url = :screenshotUrl WHERE id = :reportId`,
+        `UPDATE user_reports 
+         SET screenshot_url = :screenshotUrl 
+         WHERE id = :reportId`,
         {
           replacements: {
             screenshotUrl: `/uploads/screenshots/${screenshot.filename}`,
@@ -1333,18 +1332,28 @@ app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
           type: Sequelize.QueryTypes.UPDATE,
         }
       );
-
-      // Send screenshot to Telegram
-      await bot.sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshot.buffer, {
-        caption: `Screenshot for User: ${reportedUsername} (Visitor ID: ${visitorId})`,
-      });
     }
 
-    // Send initial report message to Telegram
+    // Send to Telegram
     await bot.sendMessage(
       process.env.TELEGRAM_CHAT_ID,
       `New Report (#${report.id}):\nVisitor ID: ${visitorId}\nUsername: ${reportedUsername}\nReason: ${reason}`
     );
+
+    if (chatLogContent) {
+      const tempFilePath = path.join(diskPath, `${room}_chatlog.txt`);
+      fs.writeFileSync(tempFilePath, chatLogContent, "utf8");
+      await bot.sendDocument(process.env.TELEGRAM_CHAT_ID, tempFilePath, {
+        caption: `Chat log for reported user: ${reportedUsername}`,
+      });
+      fs.unlinkSync(tempFilePath);
+    }
+
+    if (screenshot) {
+      await bot.sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshot.buffer, {
+        caption: `Screenshot for User: ${reportedUsername} (Visitor ID: ${visitorId})`,
+      });
+    }
 
     res.status(200).json({ message: "Report received successfully." });
   } catch (err) {
@@ -1380,7 +1389,11 @@ app.post("/api/admin/reports/:reportId/resolve", async (req, res) => {
            action_taken = :action
        WHERE id = :reportId`,
       {
-        replacements: { reportId, adminUsername, action },
+        replacements: {
+          reportId: parseInt(reportId),
+          adminUsername,
+          action,
+        },
         type: Sequelize.QueryTypes.UPDATE,
       }
     );
