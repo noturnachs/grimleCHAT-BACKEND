@@ -1950,6 +1950,40 @@ app.get("/api/shoutouts", async (req, res) => {
   }
 });
 
+// Add this endpoint to get all shoutouts for admin panel
+app.get("/api/admin/shoutouts", async (req, res) => {
+  try {
+    const [shoutouts] = await sequelize.query(
+      `SELECT * FROM shoutouts 
+       ORDER BY created_at DESC`
+    );
+    res.json(shoutouts); // Return all shoutouts, including deleted ones
+  } catch (error) {
+    console.error("Error fetching shoutouts for admin:", error);
+    res.status(500).json({ message: "Failed to fetch shoutouts" });
+  }
+});
+
+// Add this endpoint to manually delete a shoutout
+app.put("/api/shoutouts/:id/delete", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await sequelize.query(
+      `UPDATE shoutouts 
+       SET deleted = true, 
+           deletion_date = NOW() 
+       WHERE id = :id`,
+      {
+        replacements: { id },
+      }
+    );
+    res.json({ success: true, message: "Shoutout marked as deleted" });
+  } catch (error) {
+    console.error("Error deleting shoutout:", error);
+    res.status(500).json({ message: "Failed to delete shoutout" });
+  }
+});
+
 // Add this function to automatically mark old shoutouts as deleted
 const markOldShoutoutsAsDeleted = async () => {
   try {
