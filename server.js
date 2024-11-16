@@ -17,7 +17,11 @@ const server = http.createServer(app);
 
 const io = socketIO(server, {
   cors: {
-    origin: [process.env.CLIENT_ORIGIN, "https://lcccc.onrender.com"],
+    origin: [
+      process.env.CLIENT_ORIGIN,
+      "https://lcccc.onrender.com",
+      "http://localhost:3000",
+    ],
     methods: ["GET", "POST"],
   },
   pingInterval: 25000,
