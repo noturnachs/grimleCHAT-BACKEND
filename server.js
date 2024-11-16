@@ -1964,6 +1964,47 @@ app.get("/api/admin/shoutouts", async (req, res) => {
   }
 });
 
+// Reset shoutout count for a specific visitor
+app.post("/api/admin/shoutouts/reset/:visitorId", async (req, res) => {
+  const { visitorId } = req.params;
+  try {
+    await sequelize.query(
+      `DELETE FROM shoutouts 
+       WHERE visitor_id = :visitorId 
+       AND created_at > NOW() - INTERVAL '24 hours'`,
+      {
+        replacements: { visitorId },
+      }
+    );
+    res.json({ success: true, message: "Shoutout count reset successfully" });
+  } catch (error) {
+    console.error("Error resetting shoutout count:", error);
+    res.status(500).json({ message: "Failed to reset shoutout count" });
+  }
+});
+
+// Add bonus shoutouts for a visitor
+app.post("/api/admin/shoutouts/bonus/:visitorId", async (req, res) => {
+  const { visitorId } = req.params;
+  const { bonusCount } = req.body;
+  try {
+    // Add a record in a new bonus_shoutouts table to track extra allowed shoutouts
+    await sequelize.query(
+      `INSERT INTO bonus_shoutouts (visitor_id, bonus_count) 
+       VALUES (:visitorId, :bonusCount)
+       ON CONFLICT (visitor_id) 
+       DO UPDATE SET bonus_count = bonus_shoutouts.bonus_count + :bonusCount`,
+      {
+        replacements: { visitorId, bonusCount },
+      }
+    );
+    res.json({ success: true, message: "Bonus shoutouts added successfully" });
+  } catch (error) {
+    console.error("Error adding bonus shoutouts:", error);
+    res.status(500).json({ message: "Failed to add bonus shoutouts" });
+  }
+});
+
 // Add this endpoint to manually delete a shoutout
 app.put("/api/shoutouts/:id/delete", async (req, res) => {
   const { id } = req.params;
