@@ -1267,21 +1267,24 @@ app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
   }
 
   const reportedUsername = findUsernameByVisitorId(visitorId);
-  console.log(
-    `Received report: ID: ${visitorId}, Username: ${reportedUsername}, Reason: ${reason}`
-  );
 
   try {
-    // Send initial report message
-    await bot.sendMessage(
-      process.env.TELEGRAM_CHAT_ID,
-      `New Report:\nVisitor ID: ${visitorId}\nUsername: ${reportedUsername}\nReason: ${reason}`
+    // Store report in database
+    const [report] = await sequelize.query(
+      `INSERT INTO user_reports (visitor_id, reported_username, reason, room)
+       VALUES (:visitorId, :reportedUsername, :reason, :room)
+       RETURNING id`,
+      {
+        replacements: { visitorId, reportedUsername, reason, room },
+        type: Sequelize.QueryTypes.INSERT,
+      }
     );
 
-    // Generate and send chat log if available
+    // Handle chat log if available
+    let chatLogContent = null;
     if (room && roomChatLogs.has(room)) {
       const chatLog = roomChatLogs.get(room);
-      const logContent = chatLog
+      chatLogContent = chatLog
         .map(
           (msg) =>
             `[${msg.timestamp}] ${msg.username}: ${
@@ -1295,30 +1298,97 @@ app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
         )
         .join("\n");
 
-      // Create a temporary file for the chat log
-      const tempFilePath = path.join(diskPath, `${room}_chatlog.txt`);
-      fs.writeFileSync(tempFilePath, logContent, "utf8");
+      // Update report with chat log
+      await sequelize.query(
+        `UPDATE user_reports SET chat_log = :chatLog WHERE id = :reportId`,
+        {
+          replacements: { chatLog: chatLogContent, reportId: report.id },
+          type: Sequelize.QueryTypes.UPDATE,
+        }
+      );
 
-      // Send the file
+      // Create temporary file for Telegram
+      const tempFilePath = path.join(diskPath, `${room}_chatlog.txt`);
+      fs.writeFileSync(tempFilePath, chatLogContent, "utf8");
+
+      // Send chat log to Telegram
       await bot.sendDocument(process.env.TELEGRAM_CHAT_ID, tempFilePath, {
         caption: `Chat log for reported user: ${reportedUsername}`,
       });
 
-      // Clean up the temporary file
+      // Clean up temporary file
       fs.unlinkSync(tempFilePath);
     }
 
-    // Send screenshot if available
+    // Handle screenshot
     if (screenshot) {
+      // Store screenshot URL in database
+      await sequelize.query(
+        `UPDATE user_reports SET screenshot_url = :screenshotUrl WHERE id = :reportId`,
+        {
+          replacements: {
+            screenshotUrl: `/uploads/screenshots/${screenshot.filename}`,
+            reportId: report.id,
+          },
+          type: Sequelize.QueryTypes.UPDATE,
+        }
+      );
+
+      // Send screenshot to Telegram
       await bot.sendPhoto(process.env.TELEGRAM_CHAT_ID, screenshot.buffer, {
         caption: `Screenshot for User: ${reportedUsername} (Visitor ID: ${visitorId})`,
       });
     }
 
+    // Send initial report message to Telegram
+    await bot.sendMessage(
+      process.env.TELEGRAM_CHAT_ID,
+      `New Report (#${report.id}):\nVisitor ID: ${visitorId}\nUsername: ${reportedUsername}\nReason: ${reason}`
+    );
+
     res.status(200).json({ message: "Report received successfully." });
   } catch (err) {
-    console.error("Error sending report to Telegram:", err);
-    res.status(500).json({ message: "Failed to send report to Telegram." });
+    console.error("Error processing report:", err);
+    res.status(500).json({ message: "Failed to process report." });
+  }
+});
+
+// Get all reports
+app.get("/api/admin/reports", async (req, res) => {
+  try {
+    const [reports] = await sequelize.query(
+      `SELECT * FROM user_reports ORDER BY created_at DESC`
+    );
+    res.json(reports);
+  } catch (error) {
+    console.error("Error fetching reports:", error);
+    res.status(500).json({ message: "Failed to fetch reports" });
+  }
+});
+
+// Update report status and take action
+app.post("/api/admin/reports/:reportId/resolve", async (req, res) => {
+  const { reportId } = req.params;
+  const { action, adminUsername } = req.body;
+
+  try {
+    await sequelize.query(
+      `UPDATE user_reports 
+       SET status = 'resolved', 
+           resolved_at = CURRENT_TIMESTAMP, 
+           resolved_by = :adminUsername,
+           action_taken = :action
+       WHERE id = :reportId`,
+      {
+        replacements: { reportId, adminUsername, action },
+        type: Sequelize.QueryTypes.UPDATE,
+      }
+    );
+
+    res.json({ message: "Report resolved successfully" });
+  } catch (error) {
+    console.error("Error resolving report:", error);
+    res.status(500).json({ message: "Failed to resolve report" });
   }
 });
 
