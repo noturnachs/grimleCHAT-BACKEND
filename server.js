@@ -1493,6 +1493,48 @@ bot.onText(/\/addstix (.+)/, (msg, match) => {
 // Variable to store the current room for each admin
 const adminRooms = {};
 
+// Add this endpoint for admin panel room closure
+app.post("/api/close-room", (req, res) => {
+  try {
+    const { room } = req.body;
+
+    if (!room) {
+      return res.status(400).json({ message: "Room name is required" });
+    }
+
+    // Get all sockets in the room
+    const sockets = io.sockets.adapter.rooms.get(room);
+    if (sockets) {
+      // Notify all users in the room that it's being closed by admin
+      io.to(room).emit("roomClosed", {
+        message: "This room has been closed by an administrator.",
+      });
+
+      // Disconnect all users from the room
+      for (const socketId of sockets) {
+        const socket = io.sockets.sockets.get(socketId);
+        if (socket) {
+          socket.leave(room);
+        }
+      }
+    }
+
+    // Clear room messages
+    delete roomMessages[room];
+
+    // Remove the room from createdRooms
+    const roomIndex = createdRooms.indexOf(room);
+    if (roomIndex !== -1) {
+      createdRooms.splice(roomIndex, 1);
+    }
+
+    res.json({ success: true, message: `Room "${room}" has been closed.` });
+  } catch (error) {
+    console.error("Error closing room:", error);
+    res.status(500).json({ message: "Failed to close room" });
+  }
+});
+
 // Admin end room command
 bot.onText(/\/endroom/, (msg) => {
   const chatId = msg.chat.id;
