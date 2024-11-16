@@ -2050,17 +2050,31 @@ app.get("/api/shoutouts/remaining/:visitorId", async (req, res) => {
   try {
     const { visitorId } = req.params;
     const [results] = await sequelize.query(
-      `SELECT COUNT(*) as count 
-       FROM shoutouts 
-       WHERE visitor_id = :visitorId 
-       AND created_at > NOW() - INTERVAL '24 hours'`,
+      `WITH daily_count AS (
+        SELECT COUNT(*) as used_count
+        FROM shoutouts 
+        WHERE visitor_id = :visitorId 
+        AND created_at > NOW() - INTERVAL '24 hours'
+      ),
+      bonus_count AS (
+        SELECT COALESCE(bonus_count, 0) as bonus_shoutouts
+        FROM bonus_shoutouts
+        WHERE visitor_id = :visitorId
+      )
+      SELECT 
+        daily_count.used_count,
+        COALESCE(bonus_count.bonus_shoutouts, 0) as bonus_shoutouts
+      FROM daily_count
+      LEFT JOIN bonus_count ON true`,
       {
         replacements: { visitorId },
       }
     );
 
-    const count = parseInt(results[0].count);
-    const remaining = Math.max(0, 5 - count);
+    const usedCount = parseInt(results[0].used_count);
+    const bonusShoutouts = parseInt(results[0].bonus_shoutouts);
+    const totalAllowed = 5 + bonusShoutouts;
+    const remaining = Math.max(0, totalAllowed - usedCount);
 
     res.json({ remaining });
   } catch (error) {
@@ -2074,19 +2088,34 @@ app.post("/api/shoutouts", async (req, res) => {
   try {
     const { message, visitorId } = req.body;
 
-    // Check remaining shoutouts
+    // Check remaining shoutouts including bonus shoutouts
     const [results] = await sequelize.query(
-      `SELECT COUNT(*) as count 
-       FROM shoutouts 
-       WHERE visitor_id = :visitorId 
-       AND created_at > NOW() - INTERVAL '24 hours'`,
+      `WITH daily_count AS (
+        SELECT COUNT(*) as used_count
+        FROM shoutouts 
+        WHERE visitor_id = :visitorId 
+        AND created_at > NOW() - INTERVAL '24 hours'
+      ),
+      bonus_count AS (
+        SELECT COALESCE(bonus_count, 0) as bonus_shoutouts
+        FROM bonus_shoutouts
+        WHERE visitor_id = :visitorId
+      )
+      SELECT 
+        daily_count.used_count,
+        COALESCE(bonus_count.bonus_shoutouts, 0) as bonus_shoutouts
+      FROM daily_count
+      LEFT JOIN bonus_count ON true`,
       {
         replacements: { visitorId },
       }
     );
 
-    const count = parseInt(results[0].count);
-    if (count >= 5) {
+    const usedCount = parseInt(results[0].used_count);
+    const bonusShoutouts = parseInt(results[0].bonus_shoutouts);
+    const totalAllowed = 5 + bonusShoutouts;
+
+    if (usedCount >= totalAllowed) {
       return res
         .status(429)
         .json({ message: "Shoutout limit reached for today" });
@@ -2101,7 +2130,10 @@ app.post("/api/shoutouts", async (req, res) => {
       }
     );
 
-    res.status(201).json({ message: "Shoutout posted successfully" });
+    res.status(201).json({
+      message: "Shoutout posted successfully",
+      remainingShoutouts: totalAllowed - usedCount - 1,
+    });
   } catch (error) {
     console.error("Error posting shoutout:", error);
     res.status(500).json({ message: "Failed to post shoutout" });
