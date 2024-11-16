@@ -1980,6 +1980,82 @@ app.post("/api/shoutouts", async (req, res) => {
   }
 });
 
+// Add these endpoints after your other API endpoints
+
+// Admin join room endpoint
+app.post("/api/admin/join-room", (req, res) => {
+  const { room } = req.body;
+
+  if (!room) {
+    return res.status(400).json({ message: "Room name is required" });
+  }
+
+  // Check if the room exists
+  if (!io.sockets.adapter.rooms.has(room)) {
+    return res.status(404).json({ message: "Room does not exist" });
+  }
+
+  // Notify all users in the room that an admin has joined
+  io.to(room).emit("message", {
+    username: "System",
+    messageText: "An administrator has joined the room.",
+    timestamp: new Date(),
+    isSystem: true,
+  });
+
+  res.json({ success: true, message: `Joined room "${room}"` });
+});
+
+// Admin leave room endpoint
+app.post("/api/admin/leave-room", (req, res) => {
+  const { room } = req.body;
+
+  if (!room) {
+    return res.status(400).json({ message: "Room name is required" });
+  }
+
+  // Notify all users in the room that the admin has left
+  io.to(room).emit("message", {
+    username: "System",
+    messageText: "An administrator has left the room.",
+    timestamp: new Date(),
+    isSystem: true,
+  });
+
+  res.json({ success: true, message: `Left room "${room}"` });
+});
+
+// Admin send message endpoint
+app.post("/api/admin/send-message", (req, res) => {
+  const { room, message } = req.body;
+
+  if (!room || !message) {
+    return res.status(400).json({ message: "Room and message are required" });
+  }
+
+  // Send the admin message to the specific room
+  io.to(room).emit("message", {
+    username: "Admin",
+    messageText: message,
+    timestamp: new Date(),
+    isAdmin: true,
+  });
+
+  // Store the message in roomMessages
+  if (!roomMessages[room]) {
+    roomMessages[room] = [];
+  }
+
+  roomMessages[room].push({
+    username: "Admin",
+    messageText: message,
+    timestamp: new Date(),
+    isAdmin: true,
+  });
+
+  res.json({ success: true, message: "Message sent successfully" });
+});
+
 const PORT = process.env.PORT || 3002; // Default to 3000 if PORT is not set
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
