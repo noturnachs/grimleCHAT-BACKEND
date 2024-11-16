@@ -1983,25 +1983,28 @@ app.post("/api/admin/shoutouts/reset/:visitorId", async (req, res) => {
   }
 });
 
-// Add bonus shoutouts for a visitor
+// Modify the bonus shoutouts endpoint
 app.post("/api/admin/shoutouts/bonus/:visitorId", async (req, res) => {
   const { visitorId } = req.params;
   const { bonusCount } = req.body;
   try {
-    // Add a record in a new bonus_shoutouts table to track extra allowed shoutouts
+    // Replace the existing bonus count instead of adding to it
     await sequelize.query(
       `INSERT INTO bonus_shoutouts (visitor_id, bonus_count) 
        VALUES (:visitorId, :bonusCount)
        ON CONFLICT (visitor_id) 
-       DO UPDATE SET bonus_count = bonus_shoutouts.bonus_count + :bonusCount`,
+       DO UPDATE SET bonus_count = :bonusCount`, // Changed this line
       {
         replacements: { visitorId, bonusCount },
       }
     );
-    res.json({ success: true, message: "Bonus shoutouts added successfully" });
+    res.json({
+      success: true,
+      message: "Bonus shoutouts updated successfully",
+    });
   } catch (error) {
-    console.error("Error adding bonus shoutouts:", error);
-    res.status(500).json({ message: "Failed to add bonus shoutouts" });
+    console.error("Error updating bonus shoutouts:", error);
+    res.status(500).json({ message: "Failed to update bonus shoutouts" });
   }
 });
 
