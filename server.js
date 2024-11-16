@@ -1982,7 +1982,7 @@ app.post("/api/shoutouts", async (req, res) => {
 
 // Add these endpoints after your other API endpoints
 
-// Admin join room endpoint
+// Update the admin join room endpoint
 app.post("/api/admin/join-room", (req, res) => {
   const { room } = req.body;
 
@@ -1996,6 +1996,8 @@ app.post("/api/admin/join-room", (req, res) => {
   }
 
   // Notify all users in the room that an admin has joined
+  io.to(room).emit("adminJoined", { room }); // Add this event
+
   io.to(room).emit("message", {
     username: "System",
     messageText: "An administrator has joined the room.",
@@ -2006,7 +2008,7 @@ app.post("/api/admin/join-room", (req, res) => {
   res.json({ success: true, message: `Joined room "${room}"` });
 });
 
-// Admin leave room endpoint
+// Update the admin leave room endpoint
 app.post("/api/admin/leave-room", (req, res) => {
   const { room } = req.body;
 
@@ -2015,6 +2017,8 @@ app.post("/api/admin/leave-room", (req, res) => {
   }
 
   // Notify all users in the room that the admin has left
+  io.to(room).emit("adminLeft", { room }); // Add this event
+
   io.to(room).emit("message", {
     username: "System",
     messageText: "An administrator has left the room.",
