@@ -1259,27 +1259,43 @@ function findUsernameByVisitorId(visitorId) {
 }
 
 app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
-  const { visitorId, reason, room } = req.body;
+  const { visitorId, reason, room, reportedByVisitorId } = req.body; // Add reportedByVisitorId to destructuring
   const screenshot = req.file;
 
-  if (!visitorId || !reason) {
+  if (!visitorId || !reason || !reportedByVisitorId) {
+    // Add validation for reportedByVisitorId
     return res.status(400).json({ message: "Missing required fields." });
   }
 
   const reportedUsername = findUsernameByVisitorId(visitorId);
 
   try {
-    // Store report in database and get the inserted ID
+    // Update the INSERT query to include reported_by_visitorid
     const [[report]] = await sequelize.query(
-      `INSERT INTO user_reports (visitor_id, reported_username, reason, room, status)
-       VALUES (:visitorId, :reportedUsername, :reason, :room, 'pending')
-       RETURNING id, visitor_id, reported_username, reason, room, status`,
+      `INSERT INTO user_reports (
+        visitor_id, 
+        reported_username, 
+        reason, 
+        room, 
+        status, 
+        reported_by_visitorid
+      )
+      VALUES (
+        :visitorId, 
+        :reportedUsername, 
+        :reason, 
+        :room, 
+        'pending',
+        :reportedByVisitorId
+      )
+      RETURNING id, visitor_id, reported_username, reason, room, status, reported_by_visitorid`,
       {
         replacements: {
           visitorId,
           reportedUsername,
           reason,
           room,
+          reportedByVisitorId,
         },
         type: Sequelize.QueryTypes.INSERT,
       }
@@ -1337,7 +1353,10 @@ app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
     // Send to Telegram
     await bot.sendMessage(
       process.env.TELEGRAM_CHAT_ID,
-      `New Report (#${report.id}):\nVisitor ID: ${visitorId}\nUsername: ${reportedUsername}\nReason: ${reason}`
+      `New Report (#${report.id}):
+Reported User: ${reportedUsername} (ID: ${visitorId})
+Reported By: Visitor ID: ${reportedByVisitorId}
+Reason: ${reason}`
     );
 
     if (chatLogContent) {
@@ -1359,6 +1378,46 @@ app.post("/api/report-user", upload.single("screenshot"), async (req, res) => {
   } catch (err) {
     console.error("Error processing report:", err);
     res.status(500).json({ message: "Failed to process report." });
+  }
+});
+
+// Add this new endpoint for user report history
+app.get("/api/reports/history/:visitorId", async (req, res) => {
+  const { visitorId } = req.params;
+
+  try {
+    const [reports] = await sequelize.query(
+      `SELECT 
+        id,
+        visitor_id,
+        reported_username,
+        reason,
+        room,
+        status,
+        action_taken,
+        reported_by_visitorid,
+        created_at,
+        resolved_at,
+        resolved_by
+       FROM user_reports 
+       WHERE reported_by_visitorid = :visitorId
+       ORDER BY created_at DESC`,
+      {
+        replacements: { visitorId },
+        type: Sequelize.QueryTypes.SELECT,
+      }
+    );
+
+    // Ensure we always return an array
+    const reportsArray = Array.isArray(reports)
+      ? reports
+      : reports
+      ? [reports]
+      : [];
+    res.json(reportsArray);
+  } catch (error) {
+    console.error("Error fetching report history:", error);
+    res.status(500).json({ message: "Failed to fetch report history" });
   }
 });
 
