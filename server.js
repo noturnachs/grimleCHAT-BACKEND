@@ -2462,12 +2462,12 @@ app.post("/api/admin/leave-room", (req, res) => {
   // Notify all users in the room that the admin has left
   io.to(room).emit("adminLeft", { room, adminUsername });
 
-  io.to(room).emit("message", {
-    username: "System",
-    messageText: "An administrator has left the room.",
-    timestamp: new Date(),
-    isSystem: true,
-  });
+  // io.to(room).emit("message", {
+  //   username: "System",
+  //   messageText: "An administrator has left the room.",
+  //   timestamp: new Date(),
+  //   isSystem: true,
+  // });
 
   // Broadcast updated room admins to all admin clients
   io.emit("roomAdminsUpdate", roomAdmins);
