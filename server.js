@@ -2446,6 +2446,28 @@ app.post("/api/admin/join-room", (req, res) => {
   res.json({ success: true, message: `Joined room "${room}"` });
 });
 
+app.get("/api/queue-status", (req, res) => {
+  try {
+    const queuedUsers = Array.from(waitingQueue.values()).map((user) => ({
+      username: user.username,
+      interests: user.interest,
+      joinedAt: user.joinedAt,
+      visitorId: user.socket.visitorId,
+    }));
+
+    res.json({
+      success: true,
+      queuedUsers,
+    });
+  } catch (error) {
+    console.error("Error fetching queue status:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch queue status",
+    });
+  }
+});
+
 // Update the admin leave room endpoint
 app.post("/api/admin/leave-room", (req, res) => {
   const { room, adminUsername } = req.body;
