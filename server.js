@@ -620,8 +620,11 @@ io.on("connection", (socket) => {
 
 // Endpoint to get the list of available rooms
 app.get("/api/rooms", (req, res) => {
-  const availableRooms = createdRooms; // Use the createdRooms array to get the list of rooms
-  res.status(200).json({ success: true, rooms: availableRooms });
+  res.status(200).json({
+    success: true,
+    rooms: createdRooms,
+    roomAdmins: roomAdmins, // Include the roomAdmins object in the response
+  });
 });
 
 function matchUsers(socket) {
@@ -1381,6 +1384,120 @@ Reason: ${reason}`
   }
 });
 
+// Add this endpoint to handle admin requests
+app.post("/api/admin/request", async (req, res) => {
+  const { room, reason, visitorId, username } = req.body;
+
+  try {
+    // Log the request to the database
+    const [result] = await sequelize.query(
+      `INSERT INTO admin_requests 
+       (room, reason, visitor_id, username, status, created_at) 
+       VALUES (:room, :reason, :visitorId, :username, 'pending', NOW())
+       RETURNING id`,
+      {
+        replacements: { room, reason, visitorId, username },
+        type: Sequelize.QueryTypes.INSERT,
+      }
+    );
+
+    // Notify admins through Telegram
+    const message =
+      `🚨 *Admin Request*\n\n` +
+      `*Room:* ${room}\n` +
+      `*User:* ${username}\n` +
+      `*Visitor ID:* ${visitorId}\n` +
+      `*Reason:* ${reason}`;
+
+    await bot.sendMessage(process.env.TELEGRAM_CHAT_ID, message, {
+      parse_mode: "Markdown",
+    });
+
+    // Notify users in the room that admin has been requested
+    io.to(room).emit("message", {
+      username: "System",
+      messageText: "An admin has been requested and will join shortly.",
+      timestamp: new Date(),
+      isSystem: true,
+    });
+
+    // Add a notification in the room messages
+    if (!roomMessages[room]) {
+      roomMessages[room] = [];
+    }
+    roomMessages[room].push({
+      id: Date.now().toString(),
+      username: "System",
+      messageText: "An admin has been requested and will join shortly.",
+      timestamp: new Date(),
+      isSystem: true,
+    });
+
+    res.json({
+      success: true,
+      message: "Admin request submitted successfully",
+      requestId: result.id,
+    });
+  } catch (error) {
+    console.error("Error processing admin request:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to process admin request",
+    });
+  }
+});
+
+// Add endpoint to get admin request history
+app.get("/api/admin/requests", async (req, res) => {
+  try {
+    const [requests] = await sequelize.query(
+      `SELECT * FROM admin_requests 
+       ORDER BY created_at DESC`
+    );
+    res.json(requests);
+  } catch (error) {
+    console.error("Error fetching admin requests:", error);
+    res.status(500).json({ message: "Failed to fetch admin requests" });
+  }
+});
+
+// Add endpoint to update admin request status
+app.put("/api/admin/requests/:requestId", async (req, res) => {
+  const { requestId } = req.params;
+  const { status, adminResponse } = req.body;
+
+  try {
+    await sequelize.query(
+      `UPDATE admin_requests 
+       SET status = :status, 
+           admin_response = :adminResponse,
+           resolved_at = CASE 
+             WHEN :status IN ('resolved', 'rejected') THEN NOW() 
+             ELSE resolved_at 
+           END
+       WHERE id = :requestId`,
+      {
+        replacements: {
+          requestId: parseInt(requestId),
+          status,
+          adminResponse,
+        },
+      }
+    );
+
+    res.json({
+      success: true,
+      message: "Admin request updated successfully",
+    });
+  } catch (error) {
+    console.error("Error updating admin request:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update admin request",
+    });
+  }
+});
+
 // Add this new endpoint for user report history
 app.get("/api/reports/history/:visitorId", async (req, res) => {
   const { visitorId } = req.params;
@@ -1668,6 +1785,13 @@ app.post("/api/close-room", (req, res) => {
     const roomIndex = createdRooms.indexOf(room);
     if (roomIndex !== -1) {
       createdRooms.splice(roomIndex, 1);
+    }
+
+    // Remove the room from roomAdmins tracking
+    if (roomAdmins[room]) {
+      delete roomAdmins[room];
+      // Broadcast updated room admins to all admin clients
+      io.emit("roomAdminsUpdate", roomAdmins);
     }
 
     res.json({ success: true, message: `Room "${room}" has been closed.` });
@@ -2286,13 +2410,16 @@ app.post("/api/shoutouts", async (req, res) => {
 });
 
 // Add these endpoints after your other API endpoints
+const roomAdmins = {};
 
 // Update the admin join room endpoint
 app.post("/api/admin/join-room", (req, res) => {
-  const { room } = req.body;
+  const { room, adminUsername } = req.body;
 
-  if (!room) {
-    return res.status(400).json({ message: "Room name is required" });
+  if (!room || !adminUsername) {
+    return res
+      .status(400)
+      .json({ message: "Room name and admin username are required" });
   }
 
   // Check if the room exists
@@ -2300,29 +2427,40 @@ app.post("/api/admin/join-room", (req, res) => {
     return res.status(404).json({ message: "Room does not exist" });
   }
 
-  // Notify all users in the room that an admin has joined
-  io.to(room).emit("adminJoined", { room }); // Add this event
+  // Check if room is already being managed
+  if (roomAdmins[room]) {
+    return res.status(400).json({
+      message: `Room is already being managed by ${roomAdmins[room]}`,
+    });
+  }
 
-  io.to(room).emit("message", {
-    username: "System",
-    messageText: "An administrator has joined the room.",
-    timestamp: new Date(),
-    isSystem: true,
-  });
+  // Assign admin to room
+  roomAdmins[room] = adminUsername;
+
+  // Notify all users in the room that an admin has joined
+  io.to(room).emit("adminJoined", { room, adminUsername });
+
+  // Broadcast updated room admins to all admin clients
+  io.emit("roomAdminsUpdate", roomAdmins);
 
   res.json({ success: true, message: `Joined room "${room}"` });
 });
 
 // Update the admin leave room endpoint
 app.post("/api/admin/leave-room", (req, res) => {
-  const { room } = req.body;
+  const { room, adminUsername } = req.body;
 
-  if (!room) {
-    return res.status(400).json({ message: "Room name is required" });
+  if (!room || !adminUsername) {
+    return res
+      .status(400)
+      .json({ message: "Room name and admin username are required" });
   }
 
+  // Remove admin from room
+  delete roomAdmins[room];
+
   // Notify all users in the room that the admin has left
-  io.to(room).emit("adminLeft", { room }); // Add this event
+  io.to(room).emit("adminLeft", { room, adminUsername });
 
   io.to(room).emit("message", {
     username: "System",
@@ -2330,6 +2468,9 @@ app.post("/api/admin/leave-room", (req, res) => {
     timestamp: new Date(),
     isSystem: true,
   });
+
+  // Broadcast updated room admins to all admin clients
+  io.emit("roomAdminsUpdate", roomAdmins);
 
   res.json({ success: true, message: `Left room "${room}"` });
 });
