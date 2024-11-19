@@ -2249,28 +2249,29 @@ app.post("/api/admin/shoutouts/reset/:visitorId", async (req, res) => {
   }
 });
 
-// Modify the bonus shoutouts endpoint
-app.post("/api/admin/shoutouts/bonus/:visitorId", async (req, res) => {
+// Endpoint to edit shoutout limit
+app.put("/api/admin/shoutouts/edit/:visitorId", async (req, res) => {
   const { visitorId } = req.params;
-  const { bonusCount } = req.body;
+  const { newLimit } = req.body;
+
+  if (!newLimit || typeof newLimit !== "number") {
+    return res.status(400).json({ message: "Invalid new limit." });
+  }
+
   try {
-    // Replace the existing bonus count instead of adding to it
     await sequelize.query(
-      `INSERT INTO bonus_shoutouts (visitor_id, bonus_count) 
-       VALUES (:visitorId, :bonusCount)
-       ON CONFLICT (visitor_id) 
-       DO UPDATE SET bonus_count = :bonusCount`, // Changed this line
+      `UPDATE bonus_shoutouts
+       SET base_count = :newLimit
+       WHERE visitor_id = :visitorId`,
       {
-        replacements: { visitorId, bonusCount },
+        replacements: { newLimit, visitorId },
       }
     );
-    res.json({
-      success: true,
-      message: "Bonus shoutouts updated successfully",
-    });
+
+    res.status(200).json({ message: "Shoutout limit updated successfully." });
   } catch (error) {
-    console.error("Error updating bonus shoutouts:", error);
-    res.status(500).json({ message: "Failed to update bonus shoutouts" });
+    console.error("Error updating shoutout limit:", error);
+    res.status(500).json({ message: "Failed to update shoutout limit." });
   }
 });
 
@@ -2318,6 +2319,17 @@ setInterval(markOldShoutoutsAsDeleted, 60000); // 60000ms = 1 minute
 app.get("/api/shoutouts/remaining/:visitorId", async (req, res) => {
   try {
     const { visitorId } = req.params;
+
+    // First ensure the visitor has an entry with default values
+    await sequelize.query(
+      `INSERT INTO bonus_shoutouts (visitor_id)
+       VALUES (:visitorId)
+       ON CONFLICT (visitor_id) DO NOTHING`,
+      {
+        replacements: { visitorId },
+      }
+    );
+
     const [results] = await sequelize.query(
       `WITH daily_count AS (
         SELECT COUNT(*) as used_count
@@ -2325,24 +2337,28 @@ app.get("/api/shoutouts/remaining/:visitorId", async (req, res) => {
         WHERE visitor_id = :visitorId 
         AND created_at > NOW() - INTERVAL '24 hours'
       ),
-      bonus_count AS (
-        SELECT COALESCE(bonus_count, 0) as bonus_shoutouts
+      shoutout_limits AS (
+        SELECT 
+          COALESCE(base_count, 5) as base_count,
+          COALESCE(bonus_count, 0) as bonus_count
         FROM bonus_shoutouts
         WHERE visitor_id = :visitorId
       )
       SELECT 
         daily_count.used_count,
-        COALESCE(bonus_count.bonus_shoutouts, 0) as bonus_shoutouts
+        shoutout_limits.base_count,
+        shoutout_limits.bonus_count
       FROM daily_count
-      LEFT JOIN bonus_count ON true`,
+      CROSS JOIN shoutout_limits`,
       {
         replacements: { visitorId },
       }
     );
 
     const usedCount = parseInt(results[0].used_count);
-    const bonusShoutouts = parseInt(results[0].bonus_shoutouts);
-    const totalAllowed = 5 + bonusShoutouts;
+    const baseCount = parseInt(results[0].base_count);
+    const bonusCount = parseInt(results[0].bonus_count);
+    const totalAllowed = baseCount + bonusCount;
     const remaining = Math.max(0, totalAllowed - usedCount);
 
     res.json({ remaining });
