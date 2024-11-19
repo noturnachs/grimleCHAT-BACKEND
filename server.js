@@ -110,6 +110,20 @@ app.use(
 );
 const roomChatLogs = new Map(); // Store chat logs for each room
 let peakUserCount = 0;
+let maintenanceMode = false;
+
+// Add these endpoints
+app.get("/api/maintenance-status", (req, res) => {
+  res.json({ enabled: maintenanceMode });
+});
+
+app.post("/api/admin/maintenance", (req, res) => {
+  const { enabled } = req.body;
+  maintenanceMode = enabled;
+  // Broadcast to all connected clients
+  io.emit("maintenanceStatus", { enabled: maintenanceMode });
+  res.json({ success: true, enabled: maintenanceMode });
+});
 
 app.get("/api/stats", (req, res) => {
   try {
@@ -290,6 +304,7 @@ function checkInactiveRoomsAndWarn() {
 }
 
 io.on("connection", (socket) => {
+  socket.emit("maintenanceStatus", { enabled: maintenanceMode });
   console.log(
     "A user connected with socket ID:",
     socket.id,
