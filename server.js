@@ -2430,6 +2430,11 @@ app.post("/api/shoutouts", async (req, res) => {
       }
     );
 
+    io.emit("newShoutout", {
+      message: message,
+      created_at: new Date().toISOString(),
+    });
+
     res.status(201).json({
       message: "Shoutout posted successfully",
       remainingShoutouts: totalAllowed - usedCount - 1,
